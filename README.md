@@ -26,8 +26,9 @@ functions that call the CLI for you.
 
 2. **Licensing via pip.** CED's `sonpy` is proprietary. sonpipe does **not**
    bundle or redistribute it; instead `pip install sonpipe` declares `sonpy` as
-   a dependency, so pip fetches the official, authorized CED binaries directly
-   — including native builds for Apple Silicon.
+   a dependency, so pip fetches the official, authorized CED binaries directly.
+   (On Apple Silicon, CED's current wheel is x86_64-only — see the Apple Silicon
+   note under Installation.)
 
 3. **No text-parsing overhead.** Waveforms and event times are written as raw
    little-endian binary, not JSON/CSV text. MATLAB captures the byte stream and
@@ -255,15 +256,16 @@ pip install sonpy                 # real CED sonpy (Python 3.14 on Linux/macOS)
 pytest -m integration             # uses example/spike2data.smrx by default
 ```
 
-In CI, the integration suite runs on **all four platforms** (Linux, Windows,
-macOS Intel, macOS Apple Silicon) using Python 3.14, for which CED ships sonpy
-wheels everywhere.
+In CI, the integration suite runs on **Linux, Windows, and macOS Apple Silicon**
+using Python 3.14. On the macOS runner it exercises the x86_64 `sonpy` under
+Rosetta 2 (`arch -x86_64`), since CED ships no native arm64 build.
 
 ### Continuous integration
 
 Continuous integration (see `.github/workflows/`) mirrors the matbox style used
-by NDR-matlab and runs on **Linux, Windows, macOS Intel, and macOS Apple
-Silicon**:
+by NDR-matlab and runs on **Linux, Windows, and macOS Apple Silicon**. The
+macOS runner covers both architectures: the CLI and MATLAB suites run natively
+on arm64, while the real-`sonpy` suite runs x86_64 under Rosetta 2:
 
 * **CLI tests** build the Python package (`compileall` + `python -m build`) and
   run the pytest suite.

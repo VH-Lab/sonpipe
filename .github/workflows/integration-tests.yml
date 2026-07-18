@@ -37,8 +37,6 @@ jobs:
             py: python
           - os: windows-latest   # Windows
             py: python
-          - os: macos-13         # macOS Intel
-            py: python
           - os: macos-14         # macOS Apple Silicon -> x86_64 under Rosetta
             py: arch -x86_64 python
 
