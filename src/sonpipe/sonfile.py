@@ -96,7 +96,9 @@ class SmrxFile:
         if sonlib is None:
             sonlib = load_sonpy()
         self._son = sonlib
-        self.path = os.fspath(path)
+        # Expand a leading ~ (callers such as MATLAB pass it through literally,
+        # and neither the shell nor Python expands it inside a quoted argument).
+        self.path = os.path.expanduser(os.fspath(path))
         if not os.path.exists(self.path):
             raise SonpipeError("File not found: {}".format(self.path))
 

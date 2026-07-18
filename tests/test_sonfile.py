@@ -68,6 +68,15 @@ def test_missing_file_raises():
         open_file("/no/such/file.smrx")
 
 
+def test_leading_tilde_is_expanded(tmp_path, monkeypatch):
+    # HOME (Unix) / USERPROFILE (Windows) drive os.path.expanduser.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    (tmp_path / "ex.smrx").write_bytes(b"")
+    smrx = open_file("~/ex.smrx")
+    assert smrx.path == str(tmp_path / "ex.smrx")
+
+
 def test_channel_numbers_skip_off(smrx_path):
     smrx = open_file(smrx_path)
     # slot index 1 (Spike2 #2) is Off and must be omitted.
