@@ -3,26 +3,33 @@
 # sonpipe installer for Linux and macOS.
 #
 # Installs the sonpipe command-line tool (and CED's sonpy) into an isolated
-# Python virtual environment, and symlinks the `sonpipe` command into your
+# Python virtual environment, and puts the `sonpipe` command in your
 # ~/.local/bin so it is on your PATH. Then verifies the install and prints the
 # line you need to wire sonpipe into MATLAB.
 #
+# Re-run it any time to UPDATE: if the environment already exists it is reused
+# and the sonpipe package is upgraded in place (fast; no venv rebuild). Use
+# --recreate to force a clean rebuild.
+#
 #   venv:     ~/.local/share/sonpipe/venv   (isolated; holds sonpy + numpy)
-#   command:  ~/.local/bin/sonpipe          (symlink onto your PATH)
+#   command:  ~/.local/bin/sonpipe          (onto your PATH)
 #
 # Usage:
-#   ./install.sh [options]
+#   ./install.sh [options]        # install, or update if already installed
 #
 # Options:
 #   --prefix DIR    Base install prefix (default: ~/.local); the venv goes in
 #                   DIR/share/sonpipe/venv and the command in DIR/bin.
 #   --venv DIR      Override the virtual environment location.
-#   --bin-dir DIR   Override where the `sonpipe` command is linked.
+#   --bin-dir DIR   Override where the `sonpipe` command is placed.
 #   --python PY     Python interpreter to build the venv with (default: auto,
 #                   prefers python3.14 for sonpy wheel availability).
 #   --pypi          Install from PyPI (default when not run inside the repo).
 #   --source PATH   Install from this path or pip spec (default: the repo).
-#   --no-symlink    Do not create the ~/.local/bin symlink.
+#   --update        Update the existing environment in place (the default when
+#                   one exists).
+#   --recreate      Delete and rebuild the environment from scratch.
+#   --no-symlink    Do not create the ~/.local/bin command.
 #   -h, --help      Show this help.
 #
 # Note: CED ships sonpy Linux/macOS wheels only for Python 3.14, so this script
@@ -37,6 +44,7 @@ BIN_DIR=""
 PYTHON=""
 SOURCE=""
 SYMLINK=1
+RECREATE=0
 
 log()  { printf '\033[1;34m[sonpipe]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[sonpipe] WARNING:\033[0m %s\n' "$*" >&2; }
@@ -68,7 +76,9 @@ while [ $# -gt 0 ]; do
 		--source)     SOURCE="$2";   shift 2 ;;
 		--pypi)       SOURCE="sonpipe"; shift ;;
 		--no-symlink) SYMLINK=0; shift ;;
-		-h|--help)    sed -n '2,38p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
+		--recreate)   RECREATE=1; shift ;;
+		--update)     RECREATE=0; shift ;;
+		-h|--help)    sed -n '2,37p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
 		*) err "unknown option: $1 (use --help)" ;;
 	esac
 done
@@ -95,39 +105,52 @@ while [ -h "$SOURCE_PATH" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE_PATH")" >/dev/null 2>&1 && pwd)"
 
-# Pick a Python interpreter (prefer 3.14 for sonpy wheel availability).
-if [ -z "$PYTHON" ]; then
-	candidates="python3.14 python3 python"
-	# On macOS, prefer the python.org framework build -- CED's sonpy is linked
-	# against it and will not load under other distributions (uv, Homebrew, ...).
-	if [ "$OS" = "Darwin" ]; then
-		candidates="/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14 $candidates"
+# --recreate wipes any existing environment so we build fresh.
+if [ "$RECREATE" -eq 1 ] && [ -d "$VENV_DIR" ]; then
+	log "Removing existing environment (--recreate): $VENV_DIR"
+	rm -rf "$VENV_DIR"
+fi
+# Re-running over an existing venv is a fast in-place update.
+REUSE=0
+[ -f "$VENV_DIR/pyvenv.cfg" ] && REUSE=1
+
+# A base interpreter is only needed to *create* a venv. Updating an existing one
+# reuses its interpreter, so skip Python discovery/validation entirely.
+if [ "$REUSE" -eq 0 ]; then
+	# Pick a Python interpreter (prefer 3.14 for sonpy wheel availability).
+	if [ -z "$PYTHON" ]; then
+		candidates="python3.14 python3 python"
+		# On macOS, prefer the python.org framework build -- CED's sonpy is linked
+		# against it and will not load under other distributions (uv, Homebrew, ...).
+		if [ "$OS" = "Darwin" ]; then
+			candidates="/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14 $candidates"
+		fi
+		for c in $candidates; do
+			if command -v "$c" >/dev/null 2>&1; then PYTHON="$c"; break; fi
+		done
 	fi
-	for c in $candidates; do
-		if command -v "$c" >/dev/null 2>&1; then PYTHON="$c"; break; fi
-	done
-fi
-[ -n "$PYTHON" ] || err "no Python interpreter found; install Python 3.14 and retry."
-command -v "$PYTHON" >/dev/null 2>&1 || err "python not found: $PYTHON"
+	[ -n "$PYTHON" ] || err "no Python interpreter found; install Python 3.14 and retry."
+	command -v "$PYTHON" >/dev/null 2>&1 || err "python not found: $PYTHON"
 
-# On Apple Silicon the interpreter must be able to run as x86_64 (i.e. a
-# universal2 build such as the python.org installer). Homebrew/arm64-only
-# builds cannot, and uv's standalone build lacks the framework sonpy needs.
-if [ "$MAC_ARM" -eq 1 ] && ! $PYRUN "$PYTHON" -c 'pass' >/dev/null 2>&1; then
-	warn "The chosen Python cannot run as x86_64 (it looks arm64-only)."
-	warn "On Apple Silicon, install the python.org universal2 build of Python 3.14:"
-	warn "    https://www.python.org/downloads/macos/"
-	warn "then re-run (the installer will find it automatically), or pass it explicitly:"
-	warn "    ./install.sh --python /Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14"
-	exit 1
-fi
+	# On Apple Silicon the interpreter must be able to run as x86_64 (i.e. a
+	# universal2 build such as the python.org installer). Homebrew/arm64-only
+	# builds cannot, and uv's standalone build lacks the framework sonpy needs.
+	if [ "$MAC_ARM" -eq 1 ] && ! $PYRUN "$PYTHON" -c 'pass' >/dev/null 2>&1; then
+		warn "The chosen Python cannot run as x86_64 (it looks arm64-only)."
+		warn "On Apple Silicon, install the python.org universal2 build of Python 3.14:"
+		warn "    https://www.python.org/downloads/macos/"
+		warn "then re-run (the installer will find it automatically), or pass it explicitly:"
+		warn "    ./install.sh --python /Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14"
+		exit 1
+	fi
 
-PYVER="$($PYRUN "$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-log "Using Python $PYVER ($($PYRUN "$PYTHON" -c 'import sys; print(sys.executable)'))"
-[ "$MAC_ARM" -eq 1 ] && log "Apple Silicon: building an x86_64 environment via Rosetta (arch -x86_64)."
-if [ "$PYVER" != "3.14" ]; then
-	warn "CED sonpy ships Linux/macOS wheels only for Python 3.14; you are on $PYVER."
-	warn "If sonpy fails to import below, re-run with: --python \"\$(command -v python3.14)\""
+	PYVER="$($PYRUN "$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+	log "Using Python $PYVER ($($PYRUN "$PYTHON" -c 'import sys; print(sys.executable)'))"
+	[ "$MAC_ARM" -eq 1 ] && log "Apple Silicon: building an x86_64 environment via Rosetta (arch -x86_64)."
+	if [ "$PYVER" != "3.14" ]; then
+		warn "CED sonpy ships Linux/macOS wheels only for Python 3.14; you are on $PYVER."
+		warn "If sonpy fails to import below, re-run with: --python \"\$(command -v python3.14)\""
+	fi
 fi
 
 # Decide what to install.
@@ -136,16 +159,25 @@ if [ -z "$SOURCE" ]; then
 fi
 log "Installing from: $SOURCE"
 
-log "Creating virtual environment: $VENV_DIR"
-mkdir -p "$(dirname "$VENV_DIR")"
-$PYRUN "$PYTHON" -m venv "$VENV_DIR"
+if [ "$REUSE" -eq 1 ]; then
+	log "Updating existing environment: $VENV_DIR (use --recreate for a clean rebuild)"
+else
+	log "Creating virtual environment: $VENV_DIR"
+	mkdir -p "$(dirname "$VENV_DIR")"
+	$PYRUN "$PYTHON" -m venv "$VENV_DIR"
+fi
 PY="$VENV_DIR/bin/python"
+# Version of the (possibly pre-existing) environment; used in messages below and
+# always defined, including on the reuse/update path.
+PYVER="$($PYRUN "$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 
 log "Upgrading pip"
 $PYRUN "$PY" -m pip install --upgrade pip >/dev/null
 
-log "Installing sonpipe (also fetches CED's sonpy from PyPI)"
-$PYRUN "$PY" -m pip install "$SOURCE"
+# --upgrade updates sonpipe in place; dependencies (sonpy, numpy) are only
+# touched if a version constraint requires it, so re-running is a fast update.
+log "Installing/updating sonpipe (fetches CED's sonpy from PyPI if needed)"
+$PYRUN "$PY" -m pip install --upgrade "$SOURCE"
 
 # Verify.
 log "Verifying sonpipe CLI ..."

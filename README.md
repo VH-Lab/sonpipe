@@ -64,6 +64,11 @@ the command at `~/.local/bin/sonpipe`. On Windows the venv lives under
 paste into MATLAB. Run `./install.sh --help` for options (custom prefix, Python,
 installing from PyPI, etc.).
 
+**Updating.** After a `git pull`, re-run `./install.sh` (or `./update.sh`) — it
+reuses the existing environment and upgrades the sonpipe package in place, which
+is fast and doesn't re-download `sonpy`. Use `./install.sh --recreate` to force
+a clean rebuild.
+
 > **Python version.** CED ships `sonpy` wheels for **Python 3.14 on Linux and
 > macOS** (and Python 3.9–3.14 on Windows). The installer prefers a
 > `python3.14` interpreter; if `sonpy` cannot be imported it tells you to
