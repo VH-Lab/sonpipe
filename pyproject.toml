@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonpipe"
+version = "0.1.0"
+description = "A command-line bridge that streams data from 64-bit CED Spike2 .smrx/.smr files (via sonpy) as raw binary for fast ingestion by MATLAB and other tools."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [{ name = "VH-Lab" }]
+keywords = ["spike2", "ced", "smrx", "smr", "sonpy", "electrophysiology", "matlab", "ndr"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
+
+# NOTE: sonpy is a proprietary Cambridge Electronic Design (CED) package.
+# We declare it as a dependency so that `pip install sonpipe` legally and
+# automatically fetches the official, authorized sonpy binaries from PyPI/CED.
+# We deliberately do NOT vendor or redistribute sonpy in this repository, in
+# order to comply with CED's license.
+dependencies = [
+    "numpy>=1.17",
+    "sonpy>=1.7",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=6.0"]
+
+[project.urls]
+Homepage = "https://github.com/VH-Lab/sonpipe"
+Source = "https://github.com/VH-Lab/sonpipe"
+"sonpy (CED)" = "https://pypi.org/project/sonpy/"
+
+[project.scripts]
+sonpipe = "sonpipe.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: exercises the real CED sonpy against a real Spike2 file (requires sonpy installed and the SONPIPE_TEST_FILE environment variable); skipped otherwise",
+]

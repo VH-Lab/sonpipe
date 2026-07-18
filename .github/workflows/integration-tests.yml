@@ -1,0 +1,62 @@
+name: Integration tests (real sonpy)
+
+# Exercises the REAL CED sonpy binding end-to-end against the checked-in
+# example file (example/spike2data.smrx), on every platform.
+#
+# CED ships sonpy wheels for Python 3.14 on manylinux, macOS and Windows.
+# Note: CED's macOS wheel is labelled universal2 but actually contains an
+# x86_64-only binary (no native arm64). On Apple Silicon (macos-14) we
+# therefore run every Python command through `arch -x86_64`, which executes the
+# x86_64 slice of the universal2 python.org interpreter under Rosetta 2 so the
+# x86_64 sonpy loads. Other platforms run their native x86_64 Python. (The
+# fake-sonpy suites in cli-tests.yml run natively and cover more Python
+# versions.)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: sonpy / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest    # Linux (manylinux wheel)
+            py: python
+          - os: windows-latest   # Windows
+            py: python
+          - os: macos-14         # macOS Apple Silicon -> x86_64 under Rosetta
+            py: arch -x86_64 python
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14 (x86_64)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          architecture: x64
+
+      - name: Install sonpipe with the real CED sonpy
+        run: |
+          ${{ matrix.py }} -m pip install --upgrade pip
+          ${{ matrix.py }} -m pip install .[test]
+
+      - name: Verify sonpy is importable and exposes SonFile
+        run: ${{ matrix.py }} -c "from sonpipe.sonfile import load_sonpy; m = load_sonpy(); print('sonpy module:', m.__name__, '-> SonFile:', hasattr(m, 'SonFile'))"
+
+      - name: Run integration tests against example/spike2data.smrx
+        run: ${{ matrix.py }} -m pytest -m integration -rs -v

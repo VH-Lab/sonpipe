@@ -1,0 +1,59 @@
+name: CLI tests
+
+# Build ("compile") and test the Python command-line tool across Linux,
+# Windows, and macOS Apple Silicon (macos-14, running natively on arm64). The
+# tests use a fake sonpy shim, so they do not require CED's proprietary
+# binaries.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest    # Linux
+            python-version: '3.11'
+          - os: windows-latest   # Windows
+            python-version: '3.11'
+          - os: macos-14         # macOS Apple Silicon
+            python-version: '3.11'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Upgrade build tooling
+        run: python -m pip install --upgrade pip build
+
+      - name: Compile / build the package
+        run: |
+          python -m compileall src
+          python -m build
+
+      - name: Install package (without CED sonpy) and test deps
+        run: |
+          python -m pip install . --no-deps
+          python -m pip install numpy pytest
+
+      - name: Run CLI tests
+        run: python -m pytest -q
