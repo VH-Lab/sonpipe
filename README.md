@@ -67,6 +67,12 @@ installing from PyPI, etc.).
 > macOS** (and Python 3.9–3.14 on Windows). The installer prefers a
 > `python3.14` interpreter; if `sonpy` cannot be imported it tells you to
 > install 3.14 and re-run with `--python "$(command -v python3.14)"`.
+>
+> **Apple Silicon.** CED's current macOS `sonpy` wheel contains an x86_64-only
+> binary (despite its `universal2` label), so on Apple Silicon Macs you need an
+> **x86_64 Python running under Rosetta 2** until CED ships a native arm64
+> build. Everything else (the sonpipe CLI itself, the MATLAB package, and the
+> fake-sonpy test suites) runs natively on arm64.
 
 ### Manual: pip
 

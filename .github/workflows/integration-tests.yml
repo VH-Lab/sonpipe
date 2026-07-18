@@ -3,11 +3,12 @@ name: Integration tests (real sonpy)
 # Exercises the REAL CED sonpy binding end-to-end against the checked-in
 # example file (example/spike2data.smrx), on every platform.
 #
-# CED ships sonpy wheels for Python 3.14 across all targets -- manylinux,
-# macOS universal2 (Intel + Apple Silicon), and Windows -- so a single 3.14
-# matrix covers Linux, Windows, macOS Intel (macos-13) and macOS Apple Silicon
-# (macos-14). (The fake-sonpy suites in cli-tests.yml cover more Python
-# versions but do not touch CED's binaries.)
+# CED ships sonpy wheels for Python 3.14 on manylinux, macOS and Windows.
+# Note: CED's macOS wheel is labelled universal2 but actually contains an
+# x86_64-only binary (no native arm64), so on Apple Silicon (macos-14) we run
+# an x86_64 Python under Rosetta 2 by requesting architecture x64. That keeps
+# the real-sonpy suite green on all four platforms. (The fake-sonpy suites in
+# cli-tests.yml run natively and cover more Python versions.)
 
 on:
   push:
@@ -29,11 +30,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest    # Linux (manylinux wheel)
-          - windows-latest   # Windows
-          - macos-13         # macOS Intel (universal2 wheel)
-          - macos-14         # macOS Apple Silicon (universal2 wheel)
+        include:
+          - os: ubuntu-latest    # Linux (manylinux wheel)
+            arch: x64
+          - os: windows-latest   # Windows
+            arch: x64
+          - os: macos-13         # macOS Intel
+            arch: x64
+          - os: macos-14         # macOS Apple Silicon -> x86_64 Python via Rosetta
+            arch: x64
 
     steps:
       - name: Check out repository
@@ -43,6 +48,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.14'
+          architecture: ${{ matrix.arch }}
 
       - name: Install sonpipe with the real CED sonpy
         run: |
