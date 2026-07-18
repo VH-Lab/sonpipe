@@ -1,0 +1,56 @@
+name: Integration tests (real sonpy)
+
+# Exercises the REAL CED sonpy binding end-to-end against the checked-in
+# example file (example/spike2data.smrx), on every platform.
+#
+# CED ships sonpy wheels for Python 3.14 across all targets -- manylinux,
+# macOS universal2 (Intel + Apple Silicon), and Windows -- so a single 3.14
+# matrix covers Linux, Windows, macOS Intel (macos-13) and macOS Apple Silicon
+# (macos-14). (The fake-sonpy suites in cli-tests.yml cover more Python
+# versions but do not touch CED's binaries.)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: sonpy / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest    # Linux (manylinux wheel)
+          - windows-latest   # Windows
+          - macos-13         # macOS Intel (universal2 wheel)
+          - macos-14         # macOS Apple Silicon (universal2 wheel)
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install sonpipe with the real CED sonpy
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[test]
+
+      - name: Show sonpy version
+        run: python -c "import sonpy; print('sonpy', sonpy.__version__)"
+
+      - name: Run integration tests against example/spike2data.smrx
+        run: python -m pytest -m integration -rs -v

@@ -211,13 +211,20 @@ tests drive `fakecli.py`, which runs the real sonpipe code against that same
 fake. This keeps the suites deterministic and lets them run everywhere —
 including Linux, where CED's `sonpy` does not install cleanly.
 
-To additionally validate the **real** `sonpy` binding, there is an optional,
-skipped-by-default integration suite. Point it at any real file (for example,
-NDR-matlab's `example_data/example.smr`) with `sonpy` installed:
+To additionally validate the **real** `sonpy` binding, there is an integration
+suite that runs the actual CED sonpy end-to-end (both the `SmrxFile` wrapper and
+the CLI as a subprocess) against the checked-in `example/spike2data.smrx`. It is
+skipped unless `sonpy` is importable; point `SONPIPE_TEST_FILE` at another file
+to use your own:
 
 ```bash
-SONPIPE_TEST_FILE=/path/to/example.smr pytest -m integration
+pip install sonpy                 # real CED sonpy (Python 3.14 on Linux/macOS)
+pytest -m integration             # uses example/spike2data.smrx by default
 ```
+
+In CI, the integration suite runs on **all four platforms** (Linux, Windows,
+macOS Intel, macOS Apple Silicon) using Python 3.14, for which CED ships sonpy
+wheels everywhere.
 
 ### Continuous integration
 
@@ -241,10 +248,11 @@ manual dispatch.
 ```
 sonpipe/
 ├── src/sonpipe/            # Python package (CLI + sonpy wrapper)
-├── tests/                  # Python tests + fake sonpy
+├── tests/                  # Python tests (fake sonpy + real-sonpy integration)
 ├── matlab/+sonpipe/        # MATLAB client package (imitates ndr.format.ced.*)
 ├── test/+sonpipe/+unittest/# MATLAB unit tests + fake CLI
-└── .github/workflows/      # cross-platform CI (CLI + MATLAB)
+├── example/spike2data.smrx # a real 64-bit Spike2 file used by integration tests
+└── .github/workflows/      # cross-platform CI (CLI, MATLAB, real-sonpy)
 ```
 
 ---
