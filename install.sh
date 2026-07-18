@@ -42,6 +42,23 @@ log()  { printf '\033[1;34m[sonpipe]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[sonpipe] WARNING:\033[0m %s\n' "$*" >&2; }
 err()  { printf '\033[1;31m[sonpipe] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Print a PATH-setup instruction appropriate to the user's login shell.
+path_hint() {
+	bindir="$1"
+	case "$(basename "${SHELL:-}")" in
+		zsh)
+			warn "    echo 'export PATH=\"$bindir:\$PATH\"' >> ~/.zshrc && source ~/.zshrc" ;;
+		bash)
+			# macOS login shells read ~/.bash_profile; most Linux shells read ~/.bashrc.
+			if [ "$(uname -s)" = "Darwin" ]; then rc="~/.bash_profile"; else rc="~/.bashrc"; fi
+			warn "    echo 'export PATH=\"$bindir:\$PATH\"' >> $rc && source $rc" ;;
+		fish)
+			warn "    fish_add_path $bindir" ;;
+		*)
+			warn "    add to your shell profile:  export PATH=\"$bindir:\$PATH\"" ;;
+	esac
+}
+
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--prefix)     PREFIX="$2";   shift 2 ;;
@@ -122,8 +139,8 @@ if [ "$SYMLINK" -eq 1 ]; then
 	CMD="$BIN_DIR/sonpipe"
 	case ":$PATH:" in
 		*":$BIN_DIR:"*) : ;;
-		*) warn "$BIN_DIR is not on your PATH. Add it, e.g.:"
-		   warn "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.profile" ;;
+		*) warn "$BIN_DIR is not on your PATH. Add it with:"
+		   path_hint "$BIN_DIR" ;;
 	esac
 fi
 
