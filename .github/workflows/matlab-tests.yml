@@ -1,0 +1,90 @@
+name: MATLAB tests
+
+# matbox-style CI (mirroring VH-Lab/NDR-matlab) for the +sonpipe MATLAB
+# wrappers. Compiles the functions to P-code and runs the matlab.unittest
+# suite across Linux, Windows, macOS Intel (macos-13) and macOS Apple Silicon
+# (macos-14). The MATLAB tests drive a fake sonpipe CLI (Python + numpy), so
+# CED's proprietary sonpy binaries are not required.
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - '**.md'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: MATLAB / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest    # Linux
+          - windows-latest   # Windows
+          - macos-13         # macOS Intel
+          - macos-14         # macOS Apple Silicon
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python (for the fake sonpipe CLI)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install numpy
+        run: python -m pip install --upgrade pip numpy
+
+      - name: Start virtual display server
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          Xvfb :99 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v3
+        with:
+          release: latest
+          cache: true
+
+      - name: Compile sonpipe functions to P-code
+        uses: matlab-actions/run-command@v3
+        with:
+          command: |
+            addpath(fullfile(pwd,'matlab'));
+            src = fullfile(pwd,'matlab','+sonpipe');
+            files = [dir(fullfile(src,'*.m')); dir(fullfile(src,'private','*.m'))];
+            outdir = tempname; mkdir(outdir); old = cd(outdir);
+            bad = {};
+            for i = 1:numel(files)
+                if strcmpi(files(i).name, 'Contents.m'), continue; end
+                f = fullfile(files(i).folder, files(i).name);
+                try
+                    pcode(f);
+                catch ME
+                    bad{end+1} = sprintf('%s: %s', files(i).name, ME.message); %#ok<AGROW>
+                end
+            end
+            cd(old);
+            assert(isempty(bad), 'Compilation failed:\n%s', strjoin(bad, char(10)));
+            fprintf('Compiled %d sonpipe functions to P-code.\n', numel(files));
+
+      - name: Run MATLAB unit tests
+        uses: matlab-actions/run-command@v3
+        with:
+          command: |
+            addpath(fullfile(pwd,'matlab'));
+            addpath(fullfile(pwd,'test'));
+            results = runtests('sonpipe.unittest', 'OutputDetail', 'Detailed');
+            disp(table(results));
+            assert(all(~[results.Failed]), 'Some sonpipe MATLAB tests failed');
