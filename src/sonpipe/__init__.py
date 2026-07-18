@@ -1,15 +1,15 @@
 """sonpipe - a CLI bridge for reading CED Spike2 .smrx / .smr files via sonpy.
 
-sonpipe extracts data from proprietary 64-bit ``.smrx`` (and legacy 32-bit
-``.smr``) files produced by the Cambridge Electronic Design (CED) Spike2
-acquisition system and streams it, as raw binary bytes, to standard output.
-This lets a host environment such as MATLAB drive data ingestion in chunks and
-reinterpret the byte stream directly (e.g. with ``typecast``) without any
-text-parsing overhead.
+sonpipe extracts data from 64-bit ``.smrx`` (and legacy 32-bit ``.smr``) files
+produced by the Cambridge Electronic Design (CED) Spike2 acquisition system and
+streams it, as raw binary bytes, to standard output.  This lets a host
+environment such as MATLAB drive data ingestion in chunks and reinterpret the
+byte stream directly (e.g. with ``typecast``) without any text-parsing overhead.
 
-The proprietary reader, :mod:`sonpy`, is provided by CED and is fetched
-automatically by ``pip install sonpipe``.  It is intentionally *not* vendored
-in this repository, to comply with CED's license.
+The reader, :mod:`sonpy`, is CED's GPLv3-licensed interface to the SON64
+library and is fetched automatically by ``pip install sonpipe``.  It is
+intentionally *not* vendored in this repository, so sonpipe's own MIT
+distribution stays free of GPL copyleft.
 
 The command-line tools mirror the reading functions found in the NDR-matlab
 ``ndr.format.ced`` package:

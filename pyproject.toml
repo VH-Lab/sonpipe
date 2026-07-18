@@ -19,11 +19,11 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 
-# NOTE: sonpy is a proprietary Cambridge Electronic Design (CED) package.
-# We declare it as a dependency so that `pip install sonpipe` legally and
-# automatically fetches the official, authorized sonpy binaries from PyPI/CED.
-# We deliberately do NOT vendor or redistribute sonpy in this repository, in
-# order to comply with CED's license.
+# NOTE: sonpy is Cambridge Electronic Design (CED)'s GPLv3-licensed Python
+# interface to the SON64 library. We declare it as a runtime dependency so that
+# `pip install sonpipe` fetches the official build from PyPI. We deliberately do
+# NOT vendor it in this repository -- keeping sonpipe's own MIT distribution
+# free of GPL copyleft, and letting users obtain sonpy directly from CED/PyPI.
 dependencies = [
     "numpy>=1.17",
     "sonpy>=1.7",

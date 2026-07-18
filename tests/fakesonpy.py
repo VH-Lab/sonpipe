@@ -1,9 +1,9 @@
 """A minimal fake of the CED ``sonpy.lib`` module for testing.
 
 It reproduces the parts of the ``sonpy`` API that :class:`sonpipe.SmrxFile`
-relies on, so the package can be exercised on machines without CED's
-proprietary binaries.  It is *not* a real SON file reader -- it serves synthetic
-in-memory data whose shape matches what real sonpy returns.
+relies on, so the package can be exercised on machines without CED's sonpy
+binaries.  It is *not* a real SON file reader -- it serves synthetic in-memory
+data whose shape matches what real sonpy returns.
 
 The channel layout of the default fake file (mirrors a small Spike2 file):
 

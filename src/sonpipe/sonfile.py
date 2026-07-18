@@ -4,7 +4,7 @@ This module isolates every call into ``sonpy`` so that:
 
 * the rest of sonpipe deals in plain integers, numpy arrays and dicts, and
 * tests can inject a fake ``sonpy`` implementation (see ``tests/fakesonpy.py``)
-  and run on machines where the proprietary CED binaries are not available.
+  and run on machines where CED's sonpy binaries are not available.
 
 Channel numbering
 -----------------
@@ -55,7 +55,7 @@ def _resolve_son_module(root, importer):
 def load_sonpy():
     """Import and return the sonpy module that exposes ``SonFile``.
 
-    ``sonpy`` is a proprietary CED package and is not vendored with sonpipe.
+    ``sonpy`` is CED's GPLv3-licensed package and is not vendored with sonpipe.
     """
     import importlib
 
@@ -66,7 +66,7 @@ def load_sonpy():
             "The 'sonpy' package (Cambridge Electronic Design) is required but "
             "could not be imported.\n"
             "Install it with:  pip install sonpy\n"
-            "sonpy is proprietary CED software and is fetched from PyPI on "
+            "sonpy is CED's GPLv3-licensed software, fetched from PyPI on "
             "install; it is intentionally not bundled with sonpipe.\n"
             f"(import error: {exc})"
         )

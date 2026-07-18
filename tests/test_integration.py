@@ -6,7 +6,7 @@ CLI (as a subprocess, so the raw-binary pipe is exercised too).
 
 They run when BOTH of the following hold:
 
-* the ``sonpy`` package (proprietary CED) is importable, and
+* the ``sonpy`` package (CED, GPLv3) is importable, and
 * a real Spike2 file is available -- by default the repository's
   ``example/spike2data.smrx``, or whatever ``SONPIPE_TEST_FILE`` points at.
 

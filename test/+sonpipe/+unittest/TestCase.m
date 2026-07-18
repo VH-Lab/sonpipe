@@ -3,7 +3,7 @@ classdef TestCase < matlab.unittest.TestCase
 %
 %   Points sonpipe.executable at a fake sonpipe CLI (fakecli.py) that runs the
 %   real sonpipe Python code against a synthetic in-memory file, so the MATLAB
-%   wrappers can be tested end-to-end without CED's proprietary sonpy binaries.
+%   wrappers can be tested end-to-end without CED's sonpy binaries.
 %
 %   Tests are skipped (filtered) if a working Python 3 with numpy is not found.
 

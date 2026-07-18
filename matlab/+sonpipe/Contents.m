@@ -2,7 +2,7 @@
 %
 %   The +sonpipe package reads Cambridge Electronic Design (CED) Spike2 data
 %   files by calling the standalone "sonpipe" command-line tool, which in turn
-%   uses CED's proprietary sonpy library. Python runs in its own isolated
+%   uses CED's sonpy library (GPLv3). Python runs in its own isolated
 %   process; nothing is loaded into the MATLAB interpreter, so there are no
 %   version locks or interpreter crashes.
 %

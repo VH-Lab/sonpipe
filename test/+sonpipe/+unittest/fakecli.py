@@ -2,7 +2,7 @@
 """A stand-in for the ``sonpipe`` command-line tool, for MATLAB unit tests.
 
 It runs the *real* sonpipe CLI code, but injects the test fake sonpy module in
-place of CED's proprietary ``sonpy``.  That way the MATLAB ``+sonpipe`` wrappers
+place of CED's ``sonpy``.  That way the MATLAB ``+sonpipe`` wrappers
 can be exercised end-to-end (argument construction, JSON decoding, binary
 typecast, channel dispatch, time-vector math) on any machine, without the CED
 binaries and without a Python/MATLAB in-process bridge.

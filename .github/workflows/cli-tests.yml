@@ -2,8 +2,7 @@ name: CLI tests
 
 # Build ("compile") and test the Python command-line tool across Linux,
 # Windows, and macOS Apple Silicon (macos-14, running natively on arm64). The
-# tests use a fake sonpy shim, so they do not require CED's proprietary
-# binaries.
+# tests use a fake sonpy shim, so they do not require CED's sonpy binaries.
 
 on:
   push:

@@ -1,8 +1,8 @@
 # sonpipe
 
 A lightweight command-line **bridge** for reading Cambridge Electronic Design
-(CED) Spike2 data files. `sonpipe` extracts data from proprietary Spike2 files
-with CED's [`sonpy`](https://pypi.org/project/sonpy/) library and streams it as
+(CED) Spike2 data files. `sonpipe` extracts data from Spike2 files with CED's
+[`sonpy`](https://pypi.org/project/sonpy/) library (GPLv3) and streams it as
 **raw binary bytes** to standard output, so a host environment such as MATLAB
 can ingest it in chunks — quickly, predictably, and cross-platform.
 
@@ -24,11 +24,12 @@ functions that call the CLI for you.
    system call. It never shares MATLAB's memory space, so there are no version
    locks, environment conflicts, or interpreter crashes inside your workspace.
 
-2. **Licensing via pip.** CED's `sonpy` is proprietary. sonpipe does **not**
-   bundle or redistribute it; instead `pip install sonpipe` declares `sonpy` as
-   a dependency, so pip fetches the official, authorized CED binaries directly.
-   (On Apple Silicon, CED's current wheel is x86_64-only — see the Apple Silicon
-   note under Installation.)
+2. **Licensing via pip.** CED's `sonpy` is licensed under the GPL v3. sonpipe
+   does **not** vendor it; instead `pip install sonpipe` declares `sonpy` as a
+   dependency, so pip fetches the official build from PyPI. Keeping it a runtime
+   dependency (rather than bundling) leaves sonpipe's own MIT distribution free
+   of GPL copyleft. (On Apple Silicon, CED's current wheel is x86_64-only — see
+   the Apple Silicon note under Installation.)
 
 3. **No text-parsing overhead.** Waveforms and event times are written as raw
    little-endian binary, not JSON/CSV text. MATLAB captures the byte stream and
@@ -100,9 +101,11 @@ sonpipe --version
 This also installs `sonpy` (from CED, via PyPI) and `numpy`. For an isolated,
 PATH-managed command you can alternatively use `pipx install sonpipe`.
 
-> **Note on the CED license.** `sonpy` is proprietary CED software. It is
-> fetched by pip at install time and is intentionally not included in this
-> repository.
+> **Note on the `sonpy` license.** `sonpy` is CED software licensed under the
+> **GPL v3**. It is fetched by pip at install time and is intentionally not
+> bundled in this repository, so sonpipe's own MIT distribution stays free of
+> GPL copyleft. GPL places no restrictions on *use* (reading your own files);
+> obligations attach only to redistribution.
 
 ---
 
@@ -309,5 +312,5 @@ sonpipe/
 ## License
 
 sonpipe is released under the MIT License (see `LICENSE`). It depends on, but
-does not include, CED's proprietary `sonpy` library, which carries its own
-license.
+does not include, CED's `sonpy` library, which is licensed separately under the
+GPL v3.
