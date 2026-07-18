@@ -45,3 +45,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: exercises the real CED sonpy against a real Spike2 file (requires sonpy installed and the SONPIPE_TEST_FILE environment variable); skipped otherwise",
+]

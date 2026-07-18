@@ -202,9 +202,29 @@ addpath('matlab'); addpath('test');
 results = runtests('sonpipe.unittest');
 ```
 
+### Where do the test files come from?
+
+The default suites use **no real Spike2 files**. `tests/fakesonpy.py` is a
+pure-Python stand-in for CED's `sonpy` that serves synthetic in-memory channels
+(a ramp waveform, a sine `RealWave`, events, markers, text markers); the MATLAB
+tests drive `fakecli.py`, which runs the real sonpipe code against that same
+fake. This keeps the suites deterministic and lets them run everywhere —
+including Linux, where CED's `sonpy` does not install cleanly.
+
+To additionally validate the **real** `sonpy` binding, there is an optional,
+skipped-by-default integration suite. Point it at any real file (for example,
+NDR-matlab's `example_data/example.smr`) with `sonpy` installed:
+
+```bash
+SONPIPE_TEST_FILE=/path/to/example.smr pytest -m integration
+```
+
+### Continuous integration
+
 Continuous integration (see `.github/workflows/`) mirrors the matbox style used
 by NDR-matlab. Both the CLI and MATLAB suites are built ("compiled") and run on
-**Linux, Windows, macOS Intel, and macOS Apple Silicon**.
+**Linux, Windows, macOS Intel, and macOS Apple Silicon**. The workflows trigger
+on pushes to `main`, pull requests targeting `main`, and manual dispatch.
 
 ---
 
