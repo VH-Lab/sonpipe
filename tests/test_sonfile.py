@@ -1,5 +1,6 @@
 """Tests for the SmrxFile wrapper and channel mappings."""
 
+import os
 import types
 
 import numpy as np
@@ -74,7 +75,8 @@ def test_leading_tilde_is_expanded(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     (tmp_path / "ex.smrx").write_bytes(b"")
     smrx = open_file("~/ex.smrx")
-    assert smrx.path == str(tmp_path / "ex.smrx")
+    # normpath so the comparison is separator-agnostic (Windows mixes / and \).
+    assert os.path.normpath(smrx.path) == os.path.normpath(str(tmp_path / "ex.smrx"))
 
 
 def test_channel_numbers_skip_off(smrx_path):
