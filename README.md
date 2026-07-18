@@ -64,16 +64,30 @@ the command at `~/.local/bin/sonpipe`. On Windows the venv lives under
 paste into MATLAB. Run `./install.sh --help` for options (custom prefix, Python,
 installing from PyPI, etc.).
 
+**Updating.** After a `git pull`, re-run `./install.sh` (or `./update.sh`) — it
+reuses the existing environment and upgrades the sonpipe package in place, which
+is fast and doesn't re-download `sonpy`. Use `./install.sh --recreate` to force
+a clean rebuild.
+
 > **Python version.** CED ships `sonpy` wheels for **Python 3.14 on Linux and
 > macOS** (and Python 3.9–3.14 on Windows). The installer prefers a
 > `python3.14` interpreter; if `sonpy` cannot be imported it tells you to
 > install 3.14 and re-run with `--python "$(command -v python3.14)"`.
 >
-> **Apple Silicon.** CED's current macOS `sonpy` wheel contains an x86_64-only
-> binary (despite its `universal2` label), so on Apple Silicon Macs you need an
-> **x86_64 Python running under Rosetta 2** until CED ships a native arm64
-> build. Everything else (the sonpipe CLI itself, the MATLAB package, and the
-> fake-sonpy test suites) runs natively on arm64.
+> **Apple Silicon.** CED's macOS `sonpy` is x86_64-only (despite its
+> `universal2` label) **and** is linked against the official **python.org**
+> framework build — so it will not load under Homebrew or `uv` Python. On an
+> Apple Silicon Mac:
+>
+> 1. Install **Python 3.14 from [python.org](https://www.python.org/downloads/macos/)**
+>    (the universal2 installer).
+> 2. Run `./install.sh` — it detects Apple Silicon, finds that framework Python
+>    automatically, builds an **x86_64** venv under Rosetta 2, and installs the
+>    `sonpipe` command as an `arch -x86_64` wrapper so it runs correctly even
+>    when launched from MATLAB.
+>
+> Everything else (the CLI logic, the MATLAB package, and the fake-sonpy test
+> suites) runs natively on arm64.
 
 ### Manual: pip
 

@@ -1,5 +1,6 @@
 """Tests for the SmrxFile wrapper and channel mappings."""
 
+import os
 import types
 
 import numpy as np
@@ -66,6 +67,16 @@ def test_ndr_type_mapping():
 def test_missing_file_raises():
     with pytest.raises(SonpipeError):
         open_file("/no/such/file.smrx")
+
+
+def test_leading_tilde_is_expanded(tmp_path, monkeypatch):
+    # HOME (Unix) / USERPROFILE (Windows) drive os.path.expanduser.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    (tmp_path / "ex.smrx").write_bytes(b"")
+    smrx = open_file("~/ex.smrx")
+    # normpath so the comparison is separator-agnostic (Windows mixes / and \).
+    assert os.path.normpath(smrx.path) == os.path.normpath(str(tmp_path / "ex.smrx"))
 
 
 def test_channel_numbers_skip_off(smrx_path):
