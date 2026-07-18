@@ -76,6 +76,16 @@ done
 VENV_DIR="${VENV_DIR:-$PREFIX/share/sonpipe/venv}"
 BIN_DIR="${BIN_DIR:-$PREFIX/bin}"
 
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+# On Apple Silicon, CED's sonpy is x86_64-only AND is linked against the
+# python.org framework build, so we build and run the environment as x86_64
+# (Rosetta) using that framework Python.
+MAC_ARM=0
+if [ "$OS" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then MAC_ARM=1; fi
+PYRUN=""
+[ "$MAC_ARM" -eq 1 ] && PYRUN="arch -x86_64"
+
 # Resolve the directory this script lives in (following symlinks).
 SOURCE_PATH="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE_PATH" ]; do
@@ -87,15 +97,34 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE_PATH")" >/dev/null 2>&1 && pwd)"
 
 # Pick a Python interpreter (prefer 3.14 for sonpy wheel availability).
 if [ -z "$PYTHON" ]; then
-	for c in python3.14 python3 python; do
+	candidates="python3.14 python3 python"
+	# On macOS, prefer the python.org framework build -- CED's sonpy is linked
+	# against it and will not load under other distributions (uv, Homebrew, ...).
+	if [ "$OS" = "Darwin" ]; then
+		candidates="/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14 $candidates"
+	fi
+	for c in $candidates; do
 		if command -v "$c" >/dev/null 2>&1; then PYTHON="$c"; break; fi
 	done
 fi
 [ -n "$PYTHON" ] || err "no Python interpreter found; install Python 3.14 and retry."
 command -v "$PYTHON" >/dev/null 2>&1 || err "python not found: $PYTHON"
 
-PYVER="$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-log "Using Python $PYVER ($("$PYTHON" -c 'import sys; print(sys.executable)'))"
+# On Apple Silicon the interpreter must be able to run as x86_64 (i.e. a
+# universal2 build such as the python.org installer). Homebrew/arm64-only
+# builds cannot, and uv's standalone build lacks the framework sonpy needs.
+if [ "$MAC_ARM" -eq 1 ] && ! $PYRUN "$PYTHON" -c 'pass' >/dev/null 2>&1; then
+	warn "The chosen Python cannot run as x86_64 (it looks arm64-only)."
+	warn "On Apple Silicon, install the python.org universal2 build of Python 3.14:"
+	warn "    https://www.python.org/downloads/macos/"
+	warn "then re-run (the installer will find it automatically), or pass it explicitly:"
+	warn "    ./install.sh --python /Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14"
+	exit 1
+fi
+
+PYVER="$($PYRUN "$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+log "Using Python $PYVER ($($PYRUN "$PYTHON" -c 'import sys; print(sys.executable)'))"
+[ "$MAC_ARM" -eq 1 ] && log "Apple Silicon: building an x86_64 environment via Rosetta (arch -x86_64)."
 if [ "$PYVER" != "3.14" ]; then
 	warn "CED sonpy ships Linux/macOS wheels only for Python 3.14; you are on $PYVER."
 	warn "If sonpy fails to import below, re-run with: --python \"\$(command -v python3.14)\""
@@ -109,33 +138,53 @@ log "Installing from: $SOURCE"
 
 log "Creating virtual environment: $VENV_DIR"
 mkdir -p "$(dirname "$VENV_DIR")"
-"$PYTHON" -m venv "$VENV_DIR"
+$PYRUN "$PYTHON" -m venv "$VENV_DIR"
 PY="$VENV_DIR/bin/python"
 
 log "Upgrading pip"
-"$PY" -m pip install --upgrade pip >/dev/null
+$PYRUN "$PY" -m pip install --upgrade pip >/dev/null
 
 log "Installing sonpipe (also fetches CED's sonpy from PyPI)"
-"$PY" -m pip install "$SOURCE"
+$PYRUN "$PY" -m pip install "$SOURCE"
 
 # Verify.
 log "Verifying sonpipe CLI ..."
-"$PY" -m sonpipe --version || err "sonpipe did not install correctly."
+$PYRUN "$PY" -m sonpipe --version || err "sonpipe did not install correctly."
 
 log "Verifying CED sonpy import ..."
 SONPY_OK=1
-if ! "$PY" -c "import sonpy; print('sonpy', sonpy.__version__)"; then
+if ! $PYRUN "$PY" -c "from sonpipe.sonfile import load_sonpy; load_sonpy()"; then
 	SONPY_OK=0
-	warn "sonpy could not be imported -- most likely no sonpy wheel exists for"
-	warn "Python $PYVER on this platform. Install Python 3.14 and re-run:"
-	warn "    ./install.sh --python \"\$(command -v python3.14)\""
+	if [ "$OS" = "Darwin" ]; then
+		warn "sonpy could not be imported. On macOS, CED's sonpy is x86_64-only and is"
+		warn "linked against the python.org framework Python. Install Python 3.14 from"
+		warn "    https://www.python.org/downloads/macos/"
+		warn "and re-run (it will be found automatically), or pass it explicitly:"
+		warn "    ./install.sh --python /Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14"
+	else
+		warn "sonpy could not be imported -- most likely no sonpy wheel exists for"
+		warn "Python $PYVER on this platform. Install Python 3.14 and re-run:"
+		warn "    ./install.sh --python \"\$(command -v python3.14)\""
+	fi
 fi
 
-# Symlink the command onto the PATH.
+# Put the command on the PATH.
 CMD="$VENV_DIR/bin/sonpipe"
 if [ "$SYMLINK" -eq 1 ]; then
 	mkdir -p "$BIN_DIR"
-	ln -sf "$CMD" "$BIN_DIR/sonpipe"
+	if [ "$MAC_ARM" -eq 1 ]; then
+		# A wrapper (not a symlink) so the command always runs as x86_64 under
+		# Rosetta -- including when launched from a native-arm64 host like MATLAB,
+		# where a symlink's shebang would run arm64 and fail to load sonpy.
+		rm -f "$BIN_DIR/sonpipe"
+		cat > "$BIN_DIR/sonpipe" <<WRAP
+#!/bin/sh
+exec arch -x86_64 "$VENV_DIR/bin/python" -m sonpipe "\$@"
+WRAP
+		chmod +x "$BIN_DIR/sonpipe"
+	else
+		ln -sf "$CMD" "$BIN_DIR/sonpipe"
+	fi
 	CMD="$BIN_DIR/sonpipe"
 	case ":$PATH:" in
 		*":$BIN_DIR:"*) : ;;
