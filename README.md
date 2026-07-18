@@ -42,15 +42,42 @@ functions that call the CLI for you.
 
 ## Installation
 
+### Recommended: the install script
+
+The install scripts set up sonpipe in an **isolated virtual environment** and
+put the `sonpipe` command on your PATH, so it never collides with other Python
+packages. From a checkout of this repo:
+
 ```bash
-pip install sonpipe
+# Linux / macOS
+./install.sh
+```
+```powershell
+# Windows (PowerShell)
+./install.ps1 -AddToPath
 ```
 
-This also installs `sonpy` (from CED, via PyPI) and `numpy`. Verify:
+On Linux/macOS this creates a venv at `~/.local/share/sonpipe/venv` and links
+the command at `~/.local/bin/sonpipe`. On Windows the venv lives under
+`%LOCALAPPDATA%\sonpipe`. Both print the exact `sonpipe.executable(...)` line to
+paste into MATLAB. Run `./install.sh --help` for options (custom prefix, Python,
+installing from PyPI, etc.).
+
+> **Python version.** CED ships `sonpy` wheels for **Python 3.14 on Linux and
+> macOS** (and Python 3.9–3.14 on Windows). The installer prefers a
+> `python3.14` interpreter; if `sonpy` cannot be imported it tells you to
+> install 3.14 and re-run with `--python "$(command -v python3.14)"`.
+
+### Manual: pip
 
 ```bash
+pip install sonpipe          # once published to PyPI
+pip install .                # from a checkout
 sonpipe --version
 ```
+
+This also installs `sonpy` (from CED, via PyPI) and `numpy`. For an isolated,
+PATH-managed command you can alternatively use `pipx install sonpipe`.
 
 > **Note on the CED license.** `sonpy` is proprietary CED software. It is
 > fetched by pip at install time and is intentionally not included in this
