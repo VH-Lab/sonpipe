@@ -20,7 +20,7 @@ function data = invoke_binary(args, precision)
 	cleaner = onCleanup(@() deletefile(tmp));
 
 	cmd = sprintf('%s %s > "%s"', exe, args, tmp);
-	[status, msg] = system(cmd);
+	[status, msg] = sonpipe.runcmd(cmd);
 	if status ~= 0
 		error('sonpipe:cliError', ...
 			'sonpipe failed (status %d) for command:\n  %s\n%s', ...

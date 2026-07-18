@@ -21,7 +21,7 @@ classdef TestCase < matlab.unittest.TestCase
 				'Python 3 not found on PATH; skipping +sonpipe MATLAB tests.');
 
 			cmd = sprintf('%s "%s"', py, fakecli);
-			[status, ~] = system([cmd ' --version']);
+			[status, ~] = sonpipe.runcmd([cmd ' --version']);
 			tc.assumeEqual(status, 0, ...
 				['The sonpipe fake CLI could not run (is numpy installed for ' ...
 				 'this Python?); skipping +sonpipe MATLAB tests.']);
@@ -48,7 +48,7 @@ classdef TestCase < matlab.unittest.TestCase
 			py = '';
 			candidates = {'python3', 'python'};
 			for i = 1:numel(candidates)
-				[status, ~] = system([candidates{i} ' --version']);
+				[status, ~] = sonpipe.runcmd([candidates{i} ' --version']);
 				if status == 0
 					py = candidates{i};
 					return;

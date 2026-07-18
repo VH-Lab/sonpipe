@@ -11,7 +11,7 @@ function txt = invoke_text(args)
 
 	exe = sonpipe.executable();
 	cmd = [exe ' ' args];
-	[status, txt] = system(cmd);
+	[status, txt] = sonpipe.runcmd(cmd);
 	if status ~= 0
 		error('sonpipe:cliError', ...
 			'sonpipe failed (status %d) for command:\n  %s\n%s', ...

@@ -47,7 +47,7 @@ function exe = executable(newvalue)
 	candidates{end+1} = 'python -m sonpipe';
 
 	for i = 1:numel(candidates)
-		[status, ~] = system([candidates{i} ' --version']);
+		[status, ~] = sonpipe.runcmd([candidates{i} ' --version']);
 		if status == 0
 			CACHED = candidates{i};
 			exe = CACHED;
