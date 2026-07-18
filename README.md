@@ -222,9 +222,17 @@ SONPIPE_TEST_FILE=/path/to/example.smr pytest -m integration
 ### Continuous integration
 
 Continuous integration (see `.github/workflows/`) mirrors the matbox style used
-by NDR-matlab. Both the CLI and MATLAB suites are built ("compiled") and run on
-**Linux, Windows, macOS Intel, and macOS Apple Silicon**. The workflows trigger
-on pushes to `main`, pull requests targeting `main`, and manual dispatch.
+by NDR-matlab and runs on **Linux, Windows, macOS Intel, and macOS Apple
+Silicon**:
+
+* **CLI tests** build the Python package (`compileall` + `python -m build`) and
+  run the pytest suite.
+* **MATLAB tests** run the `matlab.unittest` suite (which drives the CLI via a
+  fake). matlab-actions provides MathWorks licensing for free on public repos;
+  no secret is needed.
+
+The workflows trigger on pushes to `main`, pull requests targeting `main`, and
+manual dispatch.
 
 ---
 
