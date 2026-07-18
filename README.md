@@ -102,10 +102,11 @@ This also installs `sonpy` (from CED, via PyPI) and `numpy`. For an isolated,
 PATH-managed command you can alternatively use `pipx install sonpipe`.
 
 > **Note on the `sonpy` license.** `sonpy` is CED software licensed under the
-> **GPL v3**. It is fetched by pip at install time and is intentionally not
-> bundled in this repository, so sonpipe's own MIT distribution stays free of
-> GPL copyleft. GPL places no restrictions on *use* (reading your own files);
-> obligations attach only to redistribution.
+> **GPL v3** and distributed by CED as prebuilt binaries (the underlying SON64
+> C source is not published). It is fetched by pip at install time and is
+> intentionally not bundled in this repository, so sonpipe's own MIT
+> distribution stays free of GPL copyleft. GPL places no restrictions on *use*
+> (reading your own files); obligations attach only to redistribution.
 
 ---
 
