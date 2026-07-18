@@ -49,8 +49,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install .[test]
 
-      - name: Show sonpy version
-        run: python -c "import sonpy; print('sonpy', sonpy.__version__)"
+      - name: Verify sonpy is importable and exposes SonFile
+        run: python -c "from sonpipe.sonfile import load_sonpy; m = load_sonpy(); print('sonpy module:', m.__name__, '-> SonFile:', hasattr(m, 'SonFile'))"
 
       - name: Run integration tests against example/spike2data.smrx
         run: python -m pytest -m integration -rs -v

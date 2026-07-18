@@ -23,13 +23,44 @@ from . import channels
 from .errors import SonpipeError
 
 
+def _resolve_son_module(root, importer):
+    """Return the sonpy module object that actually exposes ``SonFile``.
+
+    CED packages sonpy inconsistently across platforms and versions:
+
+    * some wheels expose the API at the top level (``sonpy.__init__`` does
+      ``from .sonpy import *``), so ``sonpy.SonFile`` works;
+    * some wheels ship an empty ``__init__`` and the API lives in the compiled
+      submodule ``sonpy.sonpy``;
+    * older references used a ``sonpy.lib`` submodule.
+
+    ``root`` is the imported top-level ``sonpy`` package and ``importer`` is a
+    callable like ``importlib.import_module``. Returns the module exposing
+    ``SonFile``, or ``None`` if none of the known layouts do.
+    """
+    if hasattr(root, "SonFile"):
+        return root
+    for sub in ("lib", "sonpy"):
+        mod = getattr(root, sub, None)
+        if mod is None:
+            try:
+                mod = importer("sonpy." + sub)
+            except Exception:
+                mod = None
+        if mod is not None and hasattr(mod, "SonFile"):
+            return mod
+    return None
+
+
 def load_sonpy():
-    """Import and return the ``sonpy.lib`` module, or raise a helpful error.
+    """Import and return the sonpy module that exposes ``SonFile``.
 
     ``sonpy`` is a proprietary CED package and is not vendored with sonpipe.
     """
+    import importlib
+
     try:
-        from sonpy import lib as sonlib  # type: ignore
+        root = importlib.import_module("sonpy")
     except Exception as exc:  # pragma: no cover - exercised only without sonpy
         raise SonpipeError(
             "The 'sonpy' package (Cambridge Electronic Design) is required but "
@@ -39,7 +70,15 @@ def load_sonpy():
             "install; it is intentionally not bundled with sonpipe.\n"
             f"(import error: {exc})"
         )
-    return sonlib
+
+    module = _resolve_son_module(root, importlib.import_module)
+    if module is None:
+        raise SonpipeError(
+            "sonpy is installed but no module exposing 'SonFile' was found "
+            "(checked sonpy, sonpy.lib, sonpy.sonpy). This is an unexpected "
+            "sonpy version/layout."
+        )
+    return module
 
 
 def _call(method, index):

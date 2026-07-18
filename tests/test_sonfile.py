@@ -1,5 +1,7 @@
 """Tests for the SmrxFile wrapper and channel mappings."""
 
+import types
+
 import numpy as np
 import pytest
 
@@ -11,6 +13,39 @@ from sonpipe.sonfile import SmrxFile
 
 def open_file(path):
     return SmrxFile(path, sonlib=fakesonpy)
+
+
+def test_resolve_son_module_top_level():
+    # Layout: sonpy.SonFile at the top level (e.g. CED Windows wheels).
+    from sonpipe.sonfile import _resolve_son_module
+    root = types.SimpleNamespace(SonFile=object)
+    assert _resolve_son_module(root, lambda name: None) is root
+
+
+def test_resolve_son_module_lib_submodule():
+    from sonpipe.sonfile import _resolve_son_module
+    lib = types.SimpleNamespace(SonFile=object)
+    root = types.SimpleNamespace(lib=lib)
+    assert _resolve_son_module(root, lambda name: None) is lib
+
+
+def test_resolve_son_module_compiled_submodule():
+    # Layout: empty sonpy/__init__.py, API in the compiled sonpy.sonpy (Linux).
+    from sonpipe.sonfile import _resolve_son_module
+    compiled = types.SimpleNamespace(SonFile=object)
+    root = types.SimpleNamespace()  # no SonFile, no attributes
+
+    def importer(name):
+        assert name == "sonpy.sonpy"
+        return compiled
+
+    assert _resolve_son_module(root, importer) is compiled
+
+
+def test_resolve_son_module_not_found():
+    from sonpipe.sonfile import _resolve_son_module
+    root = types.SimpleNamespace()
+    assert _resolve_son_module(root, lambda name: (_ for _ in ()).throw(ImportError())) is None
 
 
 def test_channel_kind_codes_match_sonpy_enum():
