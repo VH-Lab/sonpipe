@@ -151,7 +151,7 @@ class SmrxFile:
         if getter is None:
             return
         try:
-            err = getter()
+            err = debuglog.call("GetOpenError", getter)
         except Exception:
             return
         # sonpy returns 0 (or an enum whose int() is 0) on success.
@@ -347,6 +347,14 @@ class SmrxFile:
 
         if tupto > max_ticks + 1:
             tupto = max_ticks + 1
+        # Never ask sonpy for more samples than actually exist from tfrom to the
+        # end of the channel. Over-reading past the last sample is a known way to
+        # trip sonpy's internal assertions on some files.
+        available = (max_ticks - tfrom) // divide + 1 if tfrom <= max_ticks else 0
+        if available < 0:
+            available = 0
+        if nmax > available:
+            nmax = available
         return tfrom, tupto, int(nmax)
 
     def _event_tick_range(self, t0, t1):
@@ -361,13 +369,21 @@ class SmrxFile:
     # -- reads -------------------------------------------------------------
 
     def read_waveform(self, number, start=None, count=None, t0=None, t1=None,
-                      scaled=True):
+                      scaled=True, scale=None, offset=None):
         """Read waveform samples for a channel and return a numpy array.
 
         For ``Adc`` channels the raw 16-bit integers are converted to real
         units with ``value = adc * scale / 6553.6 + offset`` when ``scaled`` is
         true; otherwise the raw ``int16`` values are returned.  ``RealWave``
         channels are already in real units.
+
+        ``scale``/``offset`` may be supplied by the caller (e.g. from a
+        previously fetched ``channel_info``). When given, they are used directly
+        instead of asking sonpy again *after* the read. This matters because on
+        some files sonpy reads the samples successfully but then aborts
+        (SIGABRT) on the very next call into it; doing no sonpy call after the
+        data read avoids turning a good read into a crash. When not given, the
+        values are read from sonpy as before.
         """
         index = self.index_for_number(number)
         kind = self.kind(index)
@@ -377,6 +393,14 @@ class SmrxFile:
                     number, channels.kind_name(kind), kind
                 )
             )
+        # Resolve scale/offset BEFORE the data read, so that after the read we
+        # make no further calls into sonpy (see the docstring).
+        if kind == channels.ADC and scaled:
+            if scale is None:
+                scale = self._num("GetChannelScale", index, default=1.0)
+            if offset is None:
+                offset = self._num("GetChannelOffset", index, default=0.0)
+
         tfrom, tupto, nmax = self._wave_tick_range(index, start, count, t0, t1)
         debuglog.log("read_waveform", number=number, index=index, kind=kind,
                      start=start, count=count, t0=t0, t1=t1,
@@ -388,8 +412,6 @@ class SmrxFile:
             raw = np.asarray(debuglog.call(
                 "ReadInts", self.f.ReadInts, index, nmax, tfrom, tupto))
             if scaled:
-                scale = self._num("GetChannelScale", index, default=1.0)
-                offset = self._num("GetChannelOffset", index, default=0.0)
                 return raw.astype(np.float64) * (scale / 6553.6) + offset
             return raw.astype(np.int16)
         else:  # REAL_WAVE

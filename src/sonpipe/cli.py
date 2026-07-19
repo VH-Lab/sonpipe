@@ -172,6 +172,10 @@ def _read_waveform(smrx, args, info):
         t0=args.t0,
         t1=args.t1,
         scaled=scaled,
+        # Reuse the scale/offset already fetched in channel_info so no call is
+        # made into sonpy after the sample read (some files abort on it).
+        scale=info.get("scale"),
+        offset=info.get("offset"),
     )
     if args.json:
         _dump_json({
