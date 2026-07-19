@@ -89,8 +89,9 @@ def test_breadcrumb_survives_an_abort(tmp_path):
     )
     proc = subprocess.run([sys.executable, "-c", driver],
                           capture_output=True, text=True)
-    # Killed by SIGABRT (negative signal number on POSIX).
-    assert proc.returncode == -signal.SIGABRT
+    # Abnormal termination: a negative signal number on POSIX, or the abort()
+    # exit code on Windows (which has no real signals). Either way, not clean 0.
+    assert proc.returncode != 0
     lines = logpath.read_text().strip().splitlines()
     # The last surviving line is the pre-call breadcrumb naming the crash site,
     # and there is no matching '<- ReadInts' completion line.
