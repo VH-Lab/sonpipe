@@ -38,7 +38,7 @@ Source = "https://github.com/VH-Lab/sonpipe"
 "sonpy (CED)" = "https://pypi.org/project/sonpy/"
 
 [project.scripts]
-sonpipe = "sonpipe.cli:main"
+sonpipe = "sonpipe.cli:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]

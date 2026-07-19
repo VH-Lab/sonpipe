@@ -102,3 +102,44 @@ def test_importable_alongside_fakesonpy():
     # Guard against import cycles between sonfile and debuglog.
     importlib.reload(fakesonpy)
     from sonpipe import sonfile  # noqa: F401
+
+
+def test_run_hard_exits_with_returncode(monkeypatch):
+    """run() must terminate via os._exit with main()'s return code, bypassing
+    the interpreter teardown where sonpy can abort after a completed command."""
+    from sonpipe import cli
+
+    monkeypatch.setattr(cli, "main", lambda argv=None: 2)
+    seen = {}
+
+    def fake_os_exit(code):
+        seen["code"] = code
+        raise SystemExit(code)  # so the test process itself survives
+
+    monkeypatch.setattr(os, "_exit", fake_os_exit)
+    with pytest.raises(SystemExit) as ei:
+        cli.run()
+    assert seen["code"] == 2
+    assert ei.value.code == 2
+
+
+def test_run_end_to_end_via_subprocess(tmp_path):
+    """`python -m sonpipe` (through run()) exits cleanly and emits data even
+    though run() calls os._exit -- a real end-to-end check of the entry point."""
+    repo = os.path.dirname(os.path.dirname(__file__))
+    smrx = tmp_path / "example.smrx"
+    smrx.write_bytes(b"")
+    driver = (
+        "import sys\n"
+        "sys.path[:0] = [{src!r}, {tests!r}]\n"
+        "import fakesonpy\n"
+        "from sonpipe import sonfile, cli\n"
+        "sonfile.load_sonpy = lambda: fakesonpy\n"
+        "cli.run(['read', {path!r}, '-c', '1', '--start', '0', '--count', '4'])\n"
+    ).format(src=os.path.join(repo, "src"),
+             tests=os.path.join(repo, "tests"),
+             path=str(smrx))
+    proc = subprocess.run([sys.executable, "-c", driver], capture_output=True)
+    assert proc.returncode == 0
+    assert len(proc.stdout) == 4 * 8  # four little-endian doubles
+    assert b"wrote 4 samples" in proc.stderr

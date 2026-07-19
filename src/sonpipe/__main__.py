@@ -1,8 +1,6 @@
 """Enable ``python -m sonpipe``."""
 
-import sys
-
-from .cli import main
+from .cli import run
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run()

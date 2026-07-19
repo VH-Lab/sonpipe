@@ -288,15 +288,28 @@ Two mechanisms help you catch and locate such a crash:
      see the exact arguments sonpipe passed;
    * ends on a dangling `-> Close` / `del SonFile` — sonpy aborted while
      releasing the file handle (a teardown-order assertion);
-   * ends on `done command=… rc=0` — the command completed and the data is
-     valid; any crash report came from interpreter shutdown *after* the result
-     was delivered.
+   * ends on `done command=… rc=0` followed by `hard_exit rc=0` — the command
+     completed and the data is valid.
 
-   To avoid the teardown-order case, sonpipe now closes the sonpy file handle
-   explicitly at the end of each command (while the interpreter is still
-   healthy) rather than leaving it to garbage collection at shutdown. This makes
-   the release step visible in the log and, in practice, prevents a class of
-   post-read `abort()`s.
+   **Shutdown-crash workaround.** On some files CED's sonpy passes an internal
+   assertion during normal work but then calls `abort()` (SIGABRT) during
+   Python's *interpreter shutdown* — in a static/`atexit` destructor that runs
+   **after** the command has already finished and delivered all of its output.
+   That abort cannot be caught from Python, but it also does no harm to the
+   result. sonpipe therefore does two things to keep a finished read from
+   turning into a crash:
+
+   * it **closes the sonpy file handle explicitly** at the end of each command,
+     while the interpreter is still healthy (rather than at garbage collection);
+   * the process entry point (`sonpipe.cli:run`, used by both the `sonpipe`
+     command and `python -m sonpipe`) flushes all output and then calls
+     `os._exit()`, which terminates immediately **without** running the
+     interpreter-shutdown code where sonpy aborts.
+
+   Because every stream is flushed before the hard exit, no data is lost; the
+   crash simply never happens. The `hard_exit` breadcrumb marks this point in
+   the log. (`main()` itself does not hard-exit, so importing and calling it
+   in-process — as the tests do — is unaffected.)
 
 ---
 

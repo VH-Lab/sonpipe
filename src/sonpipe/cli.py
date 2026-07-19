@@ -21,6 +21,7 @@ pollutes the binary stream.
 import argparse
 import json
 import math
+import os
 import sys
 
 import numpy as np
@@ -333,5 +334,37 @@ def main(argv=None):
         return 0
 
 
+def run(argv=None):
+    """Process entry point: run ``main()``, then hard-exit past interpreter teardown.
+
+    On some files CED's sonpy aborts (SIGABRT) during Python's interpreter
+    shutdown -- in a static/atexit destructor that runs *after* the command has
+    already completed and delivered all of its output. There is no way to catch
+    that abort from Python. But because the command is finished and every stream
+    has been flushed by the time ``main()`` returns, we can simply skip the
+    shutdown: ``os._exit`` terminates the process immediately without running
+    Python finalizers or C++ static destructors, so a completed read no longer
+    turns into a crash.
+
+    ``main()`` itself stays a normal, importable function (it does *not* call
+    ``os._exit``), so tests and in-process callers are unaffected.
+    """
+    rc = main(argv)
+    if not isinstance(rc, int):
+        rc = 0
+    # Make sure nothing is left in a buffer before we bypass finalization.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:
+            pass
+    try:
+        sys.stdout.buffer.flush()
+    except Exception:
+        pass
+    debuglog.log("hard_exit", rc=rc)
+    os._exit(rc)
+
+
 if __name__ == "__main__":  # pragma: no cover
-    sys.exit(main())
+    run()

@@ -30,4 +30,6 @@ sonfile.load_sonpy = lambda: fakesonpy
 
 
 if __name__ == "__main__":
-    sys.exit(cli.main())
+    # Use run() (not main()) so the MATLAB tests exercise the same hard-exit
+    # entry point as the installed `sonpipe` command.
+    cli.run()
