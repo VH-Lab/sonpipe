@@ -37,6 +37,10 @@ function header = read_SOMSMR_header(filename)
 %
 %   See also sonpipe.read_SOMSMR_datafile, sonpipe.read_SOMSMR_sampleinterval
 
+	arguments
+		filename {mustBeTextScalar}
+	end
+
 	txt = invoke_text(sprintf('header "%s"', filename));
 	raw = jsondecode(txt);
 

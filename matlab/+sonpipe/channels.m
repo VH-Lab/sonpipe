@@ -17,7 +17,12 @@ function channels = channels(filename, header)
 %
 %   See also sonpipe.read_SOMSMR_header
 
-	if nargin < 2 || isempty(header)
+	arguments
+		filename {mustBeTextScalar}
+		header = []            % [] or a header struct; read from FILENAME if omitted
+	end
+
+	if isempty(header)
 		header = sonpipe.read_SOMSMR_header(filename);
 	end
 

@@ -15,6 +15,11 @@ function data = invoke_binary(args, precision)
 %
 %   This is a private helper for the +sonpipe package.
 
+	arguments
+		args      {mustBeTextScalar}
+		precision {mustBeTextScalar}
+	end
+
 	exe = sonpipe.executable();
 	tmp = [tempname() '.bin'];
 	cleaner = onCleanup(@() deletefile(tmp));
