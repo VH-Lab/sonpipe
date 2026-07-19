@@ -19,7 +19,7 @@ import os
 
 import numpy as np
 
-from . import channels
+from . import channels, debuglog
 from .errors import SonpipeError
 
 
@@ -103,7 +103,8 @@ class SmrxFile:
             raise SonpipeError("File not found: {}".format(self.path))
 
         # sonpy opens in read-only mode when the second argument is True.
-        self.f = sonlib.SonFile(self.path, True)
+        debuglog.log("open", path=self.path)
+        self.f = debuglog.call("SonFile", sonlib.SonFile, self.path, True)
         self._check_open_error()
 
         self.timebase = float(self.f.GetTimeBase())
@@ -342,18 +343,23 @@ class SmrxFile:
                 )
             )
         tfrom, tupto, nmax = self._wave_tick_range(index, start, count, t0, t1)
+        debuglog.log("read_waveform", number=number, index=index, kind=kind,
+                     start=start, count=count, t0=t0, t1=t1,
+                     tfrom=tfrom, tupto=tupto, nmax=nmax)
         if nmax <= 0:
             return np.zeros(0, dtype=np.float64 if scaled else _wave_raw_dtype(kind))
 
         if kind == channels.ADC:
-            raw = np.asarray(self.f.ReadInts(index, nmax, tfrom, tupto))
+            raw = np.asarray(debuglog.call(
+                "ReadInts", self.f.ReadInts, index, nmax, tfrom, tupto))
             if scaled:
                 scale = self._num("GetChannelScale", index, default=1.0)
                 offset = self._num("GetChannelOffset", index, default=0.0)
                 return raw.astype(np.float64) * (scale / 6553.6) + offset
             return raw.astype(np.int16)
         else:  # REAL_WAVE
-            raw = np.asarray(self.f.ReadFloats(index, nmax, tfrom, tupto))
+            raw = np.asarray(debuglog.call(
+                "ReadFloats", self.f.ReadFloats, index, nmax, tfrom, tupto))
             return raw.astype(np.float64 if scaled else np.float32)
 
     def read_events(self, number, t0=None, t1=None, chunk=1_000_000):
@@ -366,6 +372,8 @@ class SmrxFile:
         index = self.index_for_number(number)
         kind = self.kind(index)
         tfrom, tupto = self._event_tick_range(t0, t1)
+        debuglog.log("read_events", number=number, index=index, kind=kind,
+                     t0=t0, t1=t1, tfrom=tfrom, tupto=tupto)
 
         reader = self._event_reader_for(kind)
         pieces = []
@@ -389,12 +397,14 @@ class SmrxFile:
         have a plain-event reader, so we pull markers and take their ticks.
         """
         if kind in channels.EVENT_KINDS:
-            return lambda i, n, a, b: self.f.ReadEvents(i, n, a, b)
+            return lambda i, n, a, b: debuglog.call(
+                "ReadEvents", self.f.ReadEvents, i, n, a, b)
 
         marker_method = self._marker_method(kind)
+        marker_name = getattr(marker_method, "__name__", "ReadMarkers")
 
         def read_marker_ticks(i, n, a, b):
-            markers = marker_method(i, n, a, b)
+            markers = debuglog.call(marker_name, marker_method, i, n, a, b)
             return _marker_ticks(markers)
 
         return read_marker_ticks
@@ -432,11 +442,14 @@ class SmrxFile:
             )
         tfrom, tupto = self._event_tick_range(t0, t1)
         marker_method = self._marker_method(kind)
+        marker_name = getattr(marker_method, "__name__", "ReadMarkers")
+        debuglog.log("read_markers", number=number, index=index, kind=kind,
+                     t0=t0, t1=t1, tfrom=tfrom, tupto=tupto)
 
         out = []
         cursor = tfrom
         while cursor < tupto:
-            markers = marker_method(index, chunk, cursor, tupto)
+            markers = debuglog.call(marker_name, marker_method, index, chunk, cursor, tupto)
             markers = list(markers) if markers is not None else []
             if not markers:
                 break

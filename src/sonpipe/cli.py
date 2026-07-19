@@ -25,7 +25,7 @@ import sys
 
 import numpy as np
 
-from . import __version__, channels
+from . import __version__, channels, debuglog
 from .errors import SonpipeError
 from .sonfile import SmrxFile
 
@@ -309,6 +309,10 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
+    if debuglog.enabled():
+        shown = argv if argv is not None else sys.argv[1:]
+        debuglog.log("main", command=getattr(args, "command", None),
+                     argv=" ".join(str(a) for a in shown))
     try:
         return args.func(args)
     except SonpipeError as exc:
