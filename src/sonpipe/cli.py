@@ -252,6 +252,18 @@ def build_parser():
             "Stream data from CED Spike2 .smrx/.smr files as raw binary "
             "(via sonpy) for fast ingestion by MATLAB and other tools."
         ),
+        epilog=(
+            "Environment variables:\n"
+            "  SONPIPE_LOG   Diagnose a hard crash. When set, sonpipe writes a\n"
+            "                breadcrumb line before and after every call into\n"
+            "                CED's sonpy, flushed to disk so it survives an\n"
+            "                abort()/SIGABRT. The last line then names the sonpy\n"
+            "                call that crashed. '1'/'true'/'on' logs to\n"
+            "                ~/.local/var/log/sonpipe-<uid>.log; any other value\n"
+            "                is used as the log file path; unset/'0'/'off'\n"
+            "                disables it (the default; zero overhead)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version",
                         version="sonpipe {}".format(__version__))
