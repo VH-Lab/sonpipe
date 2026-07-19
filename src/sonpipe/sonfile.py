@@ -107,8 +107,41 @@ class SmrxFile:
         self.f = debuglog.call("SonFile", sonlib.SonFile, self.path, True)
         self._check_open_error()
 
-        self.timebase = float(self.f.GetTimeBase())
-        self.max_channels = int(self.f.MaxChannels())
+        self.timebase = float(debuglog.call("GetTimeBase", self.f.GetTimeBase))
+        self.max_channels = int(debuglog.call("MaxChannels", self.f.MaxChannels))
+
+    # -- close / teardown --------------------------------------------------
+
+    def close(self):
+        """Release the sonpy file handle while the interpreter is still healthy.
+
+        sonpy's ``SonFile`` closes its file in its C++ destructor. If we leave
+        that to interpreter shutdown, the destructor can run in a torn-down
+        state and fail an internal assertion (abort()/SIGABRT) *after* a read
+        has already succeeded -- a crash with no bad data but an alarming
+        report. Closing explicitly here, at a well-defined point, both makes
+        that step visible in the breadcrumb log and avoids the shutdown-order
+        assertion. Safe to call more than once.
+        """
+        f = getattr(self, "f", None)
+        if f is None:
+            return
+        self.f = None
+        closer = getattr(f, "Close", None) or getattr(f, "close", None)
+        if callable(closer):
+            debuglog.call("Close", closer)
+        else:
+            # No explicit close method; drop the last reference now (rather than
+            # at interpreter shutdown) so the destructor runs while healthy.
+            debuglog.log("del SonFile")
+            del f
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
 
     # -- open / error handling ---------------------------------------------
 
@@ -146,7 +179,7 @@ class SmrxFile:
 
     def kind(self, index):
         """Return the integer channel-type ``kind`` for a sonpy channel *index*."""
-        return int(self.f.ChannelType(index))
+        return int(debuglog.call("ChannelType", self.f.ChannelType, index))
 
     def channel_numbers(self):
         """Return the Spike2 channel numbers of every non-Off channel."""
@@ -161,7 +194,8 @@ class SmrxFile:
         if method is None:
             return ""
         try:
-            value = _call(method, index)
+            value = debuglog.call(
+                "{}[{}]".format(method_name, index), lambda: _call(method, index))
         except Exception:
             return ""
         if value is None:
@@ -173,7 +207,8 @@ class SmrxFile:
         if method is None:
             return default
         try:
-            return float(_call(method, index))
+            return float(debuglog.call(
+                "{}[{}]".format(method_name, index), lambda: _call(method, index)))
         except Exception:
             return default
 
@@ -214,7 +249,7 @@ class SmrxFile:
         }
 
         if kind in channels.WAVEFORM_KINDS:
-            divide = int(self.f.ChannelDivide(index))
+            divide = int(debuglog.call("ChannelDivide", self.f.ChannelDivide, index))
             info["divide"] = divide
             sample_interval = divide * self.timebase
             info["sampleinterval"] = sample_interval
@@ -249,7 +284,7 @@ class SmrxFile:
             method = getattr(self.f, name, None)
             if method is not None:
                 try:
-                    info[key] = method()
+                    info[key] = debuglog.call(name, method)
                 except Exception:
                     pass
         return info
@@ -258,7 +293,7 @@ class SmrxFile:
         getter = getattr(self.f, "GetMaxTime", None)
         if getter is not None:
             try:
-                return int(getter())
+                return int(debuglog.call("GetMaxTime", getter))
             except Exception:
                 pass
         # Fall back to the largest per-channel max time.
@@ -283,7 +318,7 @@ class SmrxFile:
         arguments may be given.  Sample-based reads assume the waveform's first
         sample sits at tick 0, which is the common Spike2 case.
         """
-        divide = int(self.f.ChannelDivide(index))
+        divide = int(debuglog.call("ChannelDivide", self.f.ChannelDivide, index))
         if divide <= 0:
             divide = 1
         max_ticks = int(self._num("ChannelMaxTime", index, default=0.0) or 0)

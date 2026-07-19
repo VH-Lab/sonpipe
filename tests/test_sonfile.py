@@ -229,3 +229,30 @@ def test_read_markers_on_waveform_errors(smrx_path):
     smrx = open_file(smrx_path)
     with pytest.raises(SonpipeError):
         smrx.read_markers(1)
+
+
+def test_close_is_idempotent_and_releases_handle(smrx_path):
+    f = open_file(smrx_path)
+    assert f.f is not None
+    f.close()
+    assert f.f is None
+    f.close()  # safe to call again
+    assert f.f is None
+
+
+def test_context_manager_closes_on_exit(smrx_path):
+    with open_file(smrx_path) as f:
+        assert f.f is not None
+        data = f.read_waveform(1, start=0, count=4)
+        assert data.size == 4
+    assert f.f is None
+
+
+def test_close_calls_sonpy_close_when_present(smrx_path, monkeypatch):
+    f = open_file(smrx_path)
+    closed = {"n": 0}
+    monkeypatch.setattr(f.f, "Close", lambda: closed.__setitem__("n", closed["n"] + 1),
+                        raising=False)
+    f.close()
+    assert closed["n"] == 1
+    assert f.f is None

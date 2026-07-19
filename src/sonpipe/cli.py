@@ -71,6 +71,9 @@ def _dump_json(obj, pretty):
     else:
         json.dump(obj, sys.stdout, separators=(",", ":"))
     sys.stdout.write("\n")
+    # Flush before the caller closes the file, so the payload is delivered even
+    # if sonpy aborts while its handle is being released.
+    sys.stdout.flush()
 
 
 # --------------------------------------------------------------------------
@@ -78,32 +81,32 @@ def _dump_json(obj, pretty):
 # --------------------------------------------------------------------------
 
 def cmd_header(args):
-    smrx = _open(args.file)
-    out = {
-        "fileinfo": smrx.file_info(),
-        "channelinfo": smrx.all_channel_info(),
-    }
-    _dump_json(out, args.pretty)
-    return 0
+    with _open(args.file) as smrx:
+        out = {
+            "fileinfo": smrx.file_info(),
+            "channelinfo": smrx.all_channel_info(),
+        }
+        _dump_json(out, args.pretty)
+        return 0
 
 
 def cmd_sampleinterval(args):
-    smrx = _open(args.file)
-    info = smrx.channel_info(args.channel)
-    if info is None:
-        raise SonpipeError("Channel {} is not recorded in the file.".format(args.channel))
-    sample_interval = info.get("sampleinterval")
-    out = {
-        "channel": args.channel,
-        "kind": info["kind"],
-        "kind_name": info["kind_name"],
-        "sampleinterval": sample_interval,
-        "samplerate": info.get("samplerate"),
-        "total_samples": info.get("num_samples"),
-        "total_time": info.get("max_time"),
-    }
-    _dump_json(out, args.pretty)
-    return 0
+    with _open(args.file) as smrx:
+        info = smrx.channel_info(args.channel)
+        if info is None:
+            raise SonpipeError("Channel {} is not recorded in the file.".format(args.channel))
+        sample_interval = info.get("sampleinterval")
+        out = {
+            "channel": args.channel,
+            "kind": info["kind"],
+            "kind_name": info["kind_name"],
+            "sampleinterval": sample_interval,
+            "samplerate": info.get("samplerate"),
+            "total_samples": info.get("num_samples"),
+            "total_time": info.get("max_time"),
+        }
+        _dump_json(out, args.pretty)
+        return 0
 
 
 def _write_binary(arr, dtype, endian):
@@ -120,19 +123,19 @@ def _write_binary(arr, dtype, endian):
 
 
 def cmd_read(args):
-    smrx = _open(args.file)
-    info = smrx.channel_info(args.channel)
-    if info is None:
-        raise SonpipeError("Channel {} is not recorded in the file.".format(args.channel))
-    kind = info["kind"]
+    with _open(args.file) as smrx:
+        info = smrx.channel_info(args.channel)
+        if info is None:
+            raise SonpipeError("Channel {} is not recorded in the file.".format(args.channel))
+        kind = info["kind"]
 
-    if kind in channels.WAVEFORM_KINDS:
-        return _read_waveform(smrx, args, info)
-    if kind in channels.EVENT_KINDS:
-        return _read_events(smrx, args, info)
-    if kind in channels.MARKER_KINDS:
-        return _read_markers(smrx, args, info)
-    raise SonpipeError("Unsupported channel kind {} ({}).".format(kind, info["kind_name"]))
+        if kind in channels.WAVEFORM_KINDS:
+            return _read_waveform(smrx, args, info)
+        if kind in channels.EVENT_KINDS:
+            return _read_events(smrx, args, info)
+        if kind in channels.MARKER_KINDS:
+            return _read_markers(smrx, args, info)
+        raise SonpipeError("Unsupported channel kind {} ({}).".format(kind, info["kind_name"]))
 
 
 def _estimate_wave_samples(args, info):
@@ -182,6 +185,7 @@ def _read_waveform(smrx, args, info):
     n = _write_binary(data, dtype, args.endian)
     sys.stderr.write("sonpipe: wrote {} samples ({}) for channel {}\n".format(
         n, dtype, args.channel))
+    sys.stderr.flush()  # sentinel must reach disk before the file handle closes
     return 0
 
 
@@ -200,6 +204,7 @@ def _read_events(smrx, args, info):
     n = _write_binary(times, dtype, args.endian)
     sys.stderr.write("sonpipe: wrote {} event times ({}) for channel {}\n".format(
         n, dtype, args.channel))
+    sys.stderr.flush()  # sentinel must reach disk before the file handle closes
     return 0
 
 
@@ -220,18 +225,19 @@ def _read_markers(smrx, args, info):
 
 def cmd_channels(args):
     """Convenience listing: one line per channel (human/script friendly)."""
-    smrx = _open(args.file)
-    for info in smrx.all_channel_info():
-        sr = info.get("samplerate")
-        sr_str = "{:.4f} Hz".format(sr) if sr else "-"
-        sys.stdout.write("{number}\t{kind_name}\t{ndr_type}\t{sr}\t{title}\n".format(
-            number=info["number"],
-            kind_name=info["kind_name"],
-            ndr_type=info["ndr_type"],
-            sr=sr_str,
-            title=info.get("title", ""),
-        ))
-    return 0
+    with _open(args.file) as smrx:
+        for info in smrx.all_channel_info():
+            sr = info.get("samplerate")
+            sr_str = "{:.4f} Hz".format(sr) if sr else "-"
+            sys.stdout.write("{number}\t{kind_name}\t{ndr_type}\t{sr}\t{title}\n".format(
+                number=info["number"],
+                kind_name=info["kind_name"],
+                ndr_type=info["ndr_type"],
+                sr=sr_str,
+                title=info.get("title", ""),
+            ))
+        sys.stdout.flush()
+        return 0
 
 
 # --------------------------------------------------------------------------
@@ -314,7 +320,12 @@ def main(argv=None):
         debuglog.log("main", command=getattr(args, "command", None),
                      argv=" ".join(str(a) for a in shown))
     try:
-        return args.func(args)
+        rc = args.func(args)
+        # A clean-finish breadcrumb: if the log ends here, the command completed
+        # normally and any abort happened during interpreter shutdown; if the log
+        # instead ends on a dangling '-> <sonpy call>', that call is the crash.
+        debuglog.log("done", command=getattr(args, "command", None), rc=rc)
+        return rc
     except SonpipeError as exc:
         sys.stderr.write("sonpipe: error: {}\n".format(exc))
         return 2

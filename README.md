@@ -276,17 +276,27 @@ Two mechanisms help you catch and locate such a crash:
    `~/.local/var/log/sonpipe-<uid>.log`; any other value → that path
    (`~` is expanded); unset/`0`/`false`/`off` → disabled (zero overhead).
 
-   A typical crash tail looks like:
+   Every call into sonpy is logged — `SonFile` (open), the metadata accessors
+   (`ChannelType`, `ChannelDivide`, `ChannelMaxTime`, `GetChannelScale`, …), the
+   reads (`ReadInts` / `ReadFloats` / `ReadEvents` / marker reads), and the
+   `Close`/teardown — plus a `done` line when the command finishes cleanly.
+   Reading the **last line** tells you where it died:
 
-   ```
-   … read_waveform number=21 index=20 kind=1 start=… count=… tfrom=… tupto=… nmax=…
-   … -> ReadInts args=20,…,…,…          <-- last line: this sonpy call aborted
-   ```
+   * ends on a dangling `-> ReadInts args=…` (no matching `<- ReadInts`) — that
+     sonpy read aborted; the `read_waveform`/`read_events`/`read_markers`
+     context line just above shows the resolved `tfrom/tupto/nmax`, so you can
+     see the exact arguments sonpipe passed;
+   * ends on a dangling `-> Close` / `del SonFile` — sonpy aborted while
+     releasing the file handle (a teardown-order assertion);
+   * ends on `done command=… rc=0` — the command completed and the data is
+     valid; any crash report came from interpreter shutdown *after* the result
+     was delivered.
 
-   The `read_waveform` / `read_events` / `read_markers` context line just above
-   shows the resolved sample/tick range, so you can see exactly which arguments
-   sonpipe passed to sonpy — useful for reporting the crash to CED or for adding
-   a guard in sonpipe.
+   To avoid the teardown-order case, sonpipe now closes the sonpy file handle
+   explicitly at the end of each command (while the interpreter is still
+   healthy) rather than leaving it to garbage collection at shutdown. This makes
+   the release step visible in the log and, in practice, prevents a class of
+   post-read `abort()`s.
 
 ---
 
