@@ -229,3 +229,69 @@ def test_read_markers_on_waveform_errors(smrx_path):
     smrx = open_file(smrx_path)
     with pytest.raises(SonpipeError):
         smrx.read_markers(1)
+
+
+def test_close_is_idempotent_and_releases_handle(smrx_path):
+    f = open_file(smrx_path)
+    assert f.f is not None
+    f.close()
+    assert f.f is None
+    f.close()  # safe to call again
+    assert f.f is None
+
+
+def test_context_manager_closes_on_exit(smrx_path):
+    with open_file(smrx_path) as f:
+        assert f.f is not None
+        data = f.read_waveform(1, start=0, count=4)
+        assert data.size == 4
+    assert f.f is None
+
+
+def test_close_calls_sonpy_close_when_present(smrx_path, monkeypatch):
+    f = open_file(smrx_path)
+    closed = {"n": 0}
+    monkeypatch.setattr(f.f, "Close", lambda: closed.__setitem__("n", closed["n"] + 1),
+                        raising=False)
+    f.close()
+    assert closed["n"] == 1
+    assert f.f is None
+
+
+def test_read_waveform_clamps_nmax_to_available(smrx_path, monkeypatch):
+    """A request that runs past the last sample must be clamped, never handed to
+    sonpy as an over-read (a known way to trip its internal asserts)."""
+    f = open_file(smrx_path)
+    seen = {}
+    real = f.f.ReadInts
+
+    def spy(index, nmax, tfrom, tupto):
+        seen["nmax"] = nmax
+        return real(index, nmax, tfrom, tupto)
+
+    monkeypatch.setattr(f.f, "ReadInts", spy)
+    # fakesonpy channel 1 (index 0) has 1000 samples; ask for far more, near end.
+    data = f.read_waveform(1, start=990, count=100000)
+    assert seen["nmax"] == 11          # clamped from 100000 to samples available
+    assert seen["nmax"] < 100          # the key point: not the raw 100000 over-read
+    assert data.size == 10             # sonpy returns the real remaining samples
+
+
+def test_read_waveform_uses_supplied_scale_offset(smrx_path, monkeypatch):
+    """When scale/offset are supplied, read_waveform must NOT call back into
+    sonpy for them after the sample read."""
+    f = open_file(smrx_path)
+    called = {"scale": 0, "offset": 0}
+    monkeypatch.setattr(f.f, "GetChannelScale",
+                        lambda *a, **k: called.__setitem__("scale", called["scale"] + 1) or 2.0,
+                        raising=False)
+    monkeypatch.setattr(f.f, "GetChannelOffset",
+                        lambda *a, **k: called.__setitem__("offset", called["offset"] + 1) or 1.0,
+                        raising=False)
+    data = f.read_waveform(1, start=0, count=4, scaled=True, scale=2.0, offset=1.0)
+    assert called == {"scale": 0, "offset": 0}   # sonpy not consulted after read
+    # The fake's ADC sample i is (i % 2000) - 1000; scaling uses the supplied
+    # scale/offset:  value = adc * scale/6553.6 + offset.
+    for i in range(4):
+        adc = (i % 2000) - 1000
+        assert abs(data[i] - (adc * 2.0 / 6553.6 + 1.0)) < 1e-9

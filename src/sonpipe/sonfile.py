@@ -19,7 +19,7 @@ import os
 
 import numpy as np
 
-from . import channels
+from . import channels, debuglog
 from .errors import SonpipeError
 
 
@@ -103,11 +103,45 @@ class SmrxFile:
             raise SonpipeError("File not found: {}".format(self.path))
 
         # sonpy opens in read-only mode when the second argument is True.
-        self.f = sonlib.SonFile(self.path, True)
+        debuglog.log("open", path=self.path)
+        self.f = debuglog.call("SonFile", sonlib.SonFile, self.path, True)
         self._check_open_error()
 
-        self.timebase = float(self.f.GetTimeBase())
-        self.max_channels = int(self.f.MaxChannels())
+        self.timebase = float(debuglog.call("GetTimeBase", self.f.GetTimeBase))
+        self.max_channels = int(debuglog.call("MaxChannels", self.f.MaxChannels))
+
+    # -- close / teardown --------------------------------------------------
+
+    def close(self):
+        """Release the sonpy file handle while the interpreter is still healthy.
+
+        sonpy's ``SonFile`` closes its file in its C++ destructor. If we leave
+        that to interpreter shutdown, the destructor can run in a torn-down
+        state and fail an internal assertion (abort()/SIGABRT) *after* a read
+        has already succeeded -- a crash with no bad data but an alarming
+        report. Closing explicitly here, at a well-defined point, both makes
+        that step visible in the breadcrumb log and avoids the shutdown-order
+        assertion. Safe to call more than once.
+        """
+        f = getattr(self, "f", None)
+        if f is None:
+            return
+        self.f = None
+        closer = getattr(f, "Close", None) or getattr(f, "close", None)
+        if callable(closer):
+            debuglog.call("Close", closer)
+        else:
+            # No explicit close method; drop the last reference now (rather than
+            # at interpreter shutdown) so the destructor runs while healthy.
+            debuglog.log("del SonFile")
+            del f
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
 
     # -- open / error handling ---------------------------------------------
 
@@ -117,7 +151,7 @@ class SmrxFile:
         if getter is None:
             return
         try:
-            err = getter()
+            err = debuglog.call("GetOpenError", getter)
         except Exception:
             return
         # sonpy returns 0 (or an enum whose int() is 0) on success.
@@ -145,7 +179,7 @@ class SmrxFile:
 
     def kind(self, index):
         """Return the integer channel-type ``kind`` for a sonpy channel *index*."""
-        return int(self.f.ChannelType(index))
+        return int(debuglog.call("ChannelType", self.f.ChannelType, index))
 
     def channel_numbers(self):
         """Return the Spike2 channel numbers of every non-Off channel."""
@@ -160,7 +194,8 @@ class SmrxFile:
         if method is None:
             return ""
         try:
-            value = _call(method, index)
+            value = debuglog.call(
+                "{}[{}]".format(method_name, index), lambda: _call(method, index))
         except Exception:
             return ""
         if value is None:
@@ -172,7 +207,8 @@ class SmrxFile:
         if method is None:
             return default
         try:
-            return float(_call(method, index))
+            return float(debuglog.call(
+                "{}[{}]".format(method_name, index), lambda: _call(method, index)))
         except Exception:
             return default
 
@@ -213,7 +249,7 @@ class SmrxFile:
         }
 
         if kind in channels.WAVEFORM_KINDS:
-            divide = int(self.f.ChannelDivide(index))
+            divide = int(debuglog.call("ChannelDivide", self.f.ChannelDivide, index))
             info["divide"] = divide
             sample_interval = divide * self.timebase
             info["sampleinterval"] = sample_interval
@@ -248,7 +284,7 @@ class SmrxFile:
             method = getattr(self.f, name, None)
             if method is not None:
                 try:
-                    info[key] = method()
+                    info[key] = debuglog.call(name, method)
                 except Exception:
                     pass
         return info
@@ -257,7 +293,7 @@ class SmrxFile:
         getter = getattr(self.f, "GetMaxTime", None)
         if getter is not None:
             try:
-                return int(getter())
+                return int(debuglog.call("GetMaxTime", getter))
             except Exception:
                 pass
         # Fall back to the largest per-channel max time.
@@ -282,7 +318,7 @@ class SmrxFile:
         arguments may be given.  Sample-based reads assume the waveform's first
         sample sits at tick 0, which is the common Spike2 case.
         """
-        divide = int(self.f.ChannelDivide(index))
+        divide = int(debuglog.call("ChannelDivide", self.f.ChannelDivide, index))
         if divide <= 0:
             divide = 1
         max_ticks = int(self._num("ChannelMaxTime", index, default=0.0) or 0)
@@ -311,6 +347,14 @@ class SmrxFile:
 
         if tupto > max_ticks + 1:
             tupto = max_ticks + 1
+        # Never ask sonpy for more samples than actually exist from tfrom to the
+        # end of the channel. Over-reading past the last sample is a known way to
+        # trip sonpy's internal assertions on some files.
+        available = (max_ticks - tfrom) // divide + 1 if tfrom <= max_ticks else 0
+        if available < 0:
+            available = 0
+        if nmax > available:
+            nmax = available
         return tfrom, tupto, int(nmax)
 
     def _event_tick_range(self, t0, t1):
@@ -325,13 +369,21 @@ class SmrxFile:
     # -- reads -------------------------------------------------------------
 
     def read_waveform(self, number, start=None, count=None, t0=None, t1=None,
-                      scaled=True):
+                      scaled=True, scale=None, offset=None):
         """Read waveform samples for a channel and return a numpy array.
 
         For ``Adc`` channels the raw 16-bit integers are converted to real
         units with ``value = adc * scale / 6553.6 + offset`` when ``scaled`` is
         true; otherwise the raw ``int16`` values are returned.  ``RealWave``
         channels are already in real units.
+
+        ``scale``/``offset`` may be supplied by the caller (e.g. from a
+        previously fetched ``channel_info``). When given, they are used directly
+        instead of asking sonpy again *after* the read. This matters because on
+        some files sonpy reads the samples successfully but then aborts
+        (SIGABRT) on the very next call into it; doing no sonpy call after the
+        data read avoids turning a good read into a crash. When not given, the
+        values are read from sonpy as before.
         """
         index = self.index_for_number(number)
         kind = self.kind(index)
@@ -341,19 +393,30 @@ class SmrxFile:
                     number, channels.kind_name(kind), kind
                 )
             )
+        # Resolve scale/offset BEFORE the data read, so that after the read we
+        # make no further calls into sonpy (see the docstring).
+        if kind == channels.ADC and scaled:
+            if scale is None:
+                scale = self._num("GetChannelScale", index, default=1.0)
+            if offset is None:
+                offset = self._num("GetChannelOffset", index, default=0.0)
+
         tfrom, tupto, nmax = self._wave_tick_range(index, start, count, t0, t1)
+        debuglog.log("read_waveform", number=number, index=index, kind=kind,
+                     start=start, count=count, t0=t0, t1=t1,
+                     tfrom=tfrom, tupto=tupto, nmax=nmax)
         if nmax <= 0:
             return np.zeros(0, dtype=np.float64 if scaled else _wave_raw_dtype(kind))
 
         if kind == channels.ADC:
-            raw = np.asarray(self.f.ReadInts(index, nmax, tfrom, tupto))
+            raw = np.asarray(debuglog.call(
+                "ReadInts", self.f.ReadInts, index, nmax, tfrom, tupto))
             if scaled:
-                scale = self._num("GetChannelScale", index, default=1.0)
-                offset = self._num("GetChannelOffset", index, default=0.0)
                 return raw.astype(np.float64) * (scale / 6553.6) + offset
             return raw.astype(np.int16)
         else:  # REAL_WAVE
-            raw = np.asarray(self.f.ReadFloats(index, nmax, tfrom, tupto))
+            raw = np.asarray(debuglog.call(
+                "ReadFloats", self.f.ReadFloats, index, nmax, tfrom, tupto))
             return raw.astype(np.float64 if scaled else np.float32)
 
     def read_events(self, number, t0=None, t1=None, chunk=1_000_000):
@@ -366,6 +429,8 @@ class SmrxFile:
         index = self.index_for_number(number)
         kind = self.kind(index)
         tfrom, tupto = self._event_tick_range(t0, t1)
+        debuglog.log("read_events", number=number, index=index, kind=kind,
+                     t0=t0, t1=t1, tfrom=tfrom, tupto=tupto)
 
         reader = self._event_reader_for(kind)
         pieces = []
@@ -389,12 +454,14 @@ class SmrxFile:
         have a plain-event reader, so we pull markers and take their ticks.
         """
         if kind in channels.EVENT_KINDS:
-            return lambda i, n, a, b: self.f.ReadEvents(i, n, a, b)
+            return lambda i, n, a, b: debuglog.call(
+                "ReadEvents", self.f.ReadEvents, i, n, a, b)
 
         marker_method = self._marker_method(kind)
+        marker_name = getattr(marker_method, "__name__", "ReadMarkers")
 
         def read_marker_ticks(i, n, a, b):
-            markers = marker_method(i, n, a, b)
+            markers = debuglog.call(marker_name, marker_method, i, n, a, b)
             return _marker_ticks(markers)
 
         return read_marker_ticks
@@ -432,11 +499,14 @@ class SmrxFile:
             )
         tfrom, tupto = self._event_tick_range(t0, t1)
         marker_method = self._marker_method(kind)
+        marker_name = getattr(marker_method, "__name__", "ReadMarkers")
+        debuglog.log("read_markers", number=number, index=index, kind=kind,
+                     t0=t0, t1=t1, tfrom=tfrom, tupto=tupto)
 
         out = []
         cursor = tfrom
         while cursor < tupto:
-            markers = marker_method(index, chunk, cursor, tupto)
+            markers = debuglog.call(marker_name, marker_method, index, chunk, cursor, tupto)
             markers = list(markers) if markers is not None else []
             if not markers:
                 break

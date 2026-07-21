@@ -235,6 +235,84 @@ Helpers: `sonpipe.channels(f)` (NDR-style channel struct array),
 
 ---
 
+## Troubleshooting: diagnosing a hard crash
+
+CED's `sonpy` is a compiled C++ library. On some files/channels it fails an
+internal **assertion** and calls `abort()` (`SIGABRT`) instead of raising a
+Python error. `abort()` cannot be caught with `try`/`except` — it terminates
+the whole reader process immediately — so there is no Python traceback, and the
+host may otherwise see only truncated or empty output.
+
+Two mechanisms help you catch and locate such a crash:
+
+1. **The MATLAB layer detects it.** A successful `read` prints a completion
+   sentinel (`sonpipe: wrote N …`) to stderr as its final act. The MATLAB
+   `invoke_binary` helper requires that sentinel and checks that `N` matches the
+   bytes captured; if the reader died mid-stream (even when an intermediate
+   `arch -x86_64` wrapper masks the non-zero exit status), you get a
+   `sonpipe:crash` / `sonpipe:truncated` error naming the exact command instead
+   of silently short data.
+
+2. **Breadcrumb logging pinpoints *where* it crashed.** Set the `SONPIPE_LOG`
+   environment variable and re-run the command that crashes. sonpipe writes one
+   line immediately before and after every call into `sonpy`, flushed to disk so
+   it survives the `abort()`. The **last line** in the log is then the `sonpy`
+   call — with its exact arguments — that triggered the crash.
+
+   ```bash
+   # shell
+   SONPIPE_LOG=1 sonpipe read recording.smrx -c 21 --t0 100 --t1 110 > /dev/null
+   #   -> logs to ~/.local/var/log/sonpipe-<uid>.log
+   SONPIPE_LOG=/tmp/sonpipe.log sonpipe read …      # or an explicit path
+   ```
+   ```matlab
+   % MATLAB: turn on for the session, re-run the failing read, then turn off
+   setenv('SONPIPE_LOG', '1');
+   ... % the call that crashes
+   setenv('SONPIPE_LOG', '');
+   ```
+
+   Accepted values: `1`/`true`/`on` → default path
+   `~/.local/var/log/sonpipe-<uid>.log`; any other value → that path
+   (`~` is expanded); unset/`0`/`false`/`off` → disabled (zero overhead).
+
+   Every call into sonpy is logged — `SonFile` (open), the metadata accessors
+   (`ChannelType`, `ChannelDivide`, `ChannelMaxTime`, `GetChannelScale`, …), the
+   reads (`ReadInts` / `ReadFloats` / `ReadEvents` / marker reads), and the
+   `Close`/teardown — plus a `done` line when the command finishes cleanly.
+   Reading the **last line** tells you where it died:
+
+   * ends on a dangling `-> ReadInts args=…` (no matching `<- ReadInts`) — that
+     sonpy read aborted; the `read_waveform`/`read_events`/`read_markers`
+     context line just above shows the resolved `tfrom/tupto/nmax`, so you can
+     see the exact arguments sonpipe passed;
+   * ends on a dangling `-> Close` / `del SonFile` — sonpy aborted while
+     releasing the file handle (a teardown-order assertion);
+   * ends on `done command=… rc=0` followed by `hard_exit rc=0` — the command
+     completed and the data is valid.
+
+   **Shutdown-crash workaround.** On some files CED's sonpy passes an internal
+   assertion during normal work but then calls `abort()` (SIGABRT) during
+   Python's *interpreter shutdown* — in a static/`atexit` destructor that runs
+   **after** the command has already finished and delivered all of its output.
+   That abort cannot be caught from Python, but it also does no harm to the
+   result. sonpipe therefore does two things to keep a finished read from
+   turning into a crash:
+
+   * it **closes the sonpy file handle explicitly** at the end of each command,
+     while the interpreter is still healthy (rather than at garbage collection);
+   * the process entry point (`sonpipe.cli:run`, used by both the `sonpipe`
+     command and `python -m sonpipe`) flushes all output and then calls
+     `os._exit()`, which terminates immediately **without** running the
+     interpreter-shutdown code where sonpy aborts.
+
+   Because every stream is flushed before the hard exit, no data is lost; the
+   crash simply never happens. The `hard_exit` breadcrumb marks this point in
+   the log. (`main()` itself does not hard-exit, so importing and calling it
+   in-process — as the tests do — is unaffected.)
+
+---
+
 ## Development, testing, and CI
 
 **Python (CLI) tests** use a fake `sonpy` shim, so they run anywhere:
