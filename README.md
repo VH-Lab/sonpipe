@@ -3,8 +3,9 @@
 A lightweight command-line **bridge** for reading Cambridge Electronic Design
 (CED) Spike2 data files. `sonpipe` extracts data from Spike2 files with CED's
 [`sonpy`](https://pypi.org/project/sonpy/) library (GPLv3) and streams it as
-**raw binary bytes** to standard output, so a host environment such as MATLAB
-can ingest it in chunks — quickly, predictably, and cross-platform.
+**raw binary bytes** to standard output, so a host environment — MATLAB, Python,
+or anything else that can run a subprocess — can ingest it in chunks: quickly,
+predictably, and cross-platform.
 
 It supports **both** Spike2 file formats transparently:
 
@@ -20,25 +21,77 @@ functions that call the CLI for you.
 
 ## Why a CLI bridge?
 
-1. **Interpreter isolation.** Python runs in its own process, invoked by a
-   system call. It never shares MATLAB's memory space, so there are no version
-   locks, environment conflicts, or interpreter crashes inside your workspace.
+Talking to `sonpy` directly is harder than it looks — and, as the next section
+explains, that is true even when the host is itself written in Python.
 
-2. **Licensing via pip.** CED's `sonpy` is licensed under the GPL v3. sonpipe
+1. **Interpreter and architecture isolation.** The reader runs in its own
+   process, invoked by a system call. It never shares the host's memory space,
+   so there are no version locks or environment conflicts — and, critically,
+   the reader process does not have to be the same Python, or even the same CPU
+   architecture, as the host.
+
+2. **Crash containment.** `sonpy` is a compiled C++ library that, on some
+   files and channels, fails an internal assertion and calls `abort()`
+   (`SIGABRT`) rather than raising a catchable error. In-process that takes the
+   host down with it. Out-of-process it is just a dead child, and the
+   completion sentinel described under
+   [Troubleshooting](#troubleshooting-diagnosing-a-hard-crash) turns it into an
+   ordinary error instead of silently truncated data.
+
+3. **Licensing via pip.** CED's `sonpy` is licensed under the GPL v3. sonpipe
    does **not** vendor it; instead `pip install sonpipe` declares `sonpy` as a
    dependency, so pip fetches the official build from PyPI. Keeping it a runtime
    dependency (rather than bundling) leaves sonpipe's own MIT distribution free
    of GPL copyleft. (On Apple Silicon, CED's current wheel is x86_64-only — see
    the Apple Silicon note under Installation.)
 
-3. **No text-parsing overhead.** Waveforms and event times are written as raw
-   little-endian binary, not JSON/CSV text. MATLAB captures the byte stream and
-   reinterprets it directly (`typecast` / `fread`) with no number→text→number
-   round-trips.
+4. **No text-parsing overhead.** Waveforms and event times are written as raw
+   little-endian binary, not JSON/CSV text. The host captures the byte stream
+   and reinterprets it directly (MATLAB `typecast`/`fread`, NumPy
+   `frombuffer`) with no number→text→number round-trips.
 
-4. **Controlled chunking.** The host drives ingestion, requesting blocks by
+5. **Controlled chunking.** The host drives ingestion, requesting blocks by
    sample index (`--start`/`--count`) or time window (`--t0`/`--t1`), keeping
    memory usage low and predictable even for multi-gigabyte recordings.
+
+### Why a Python host wants the bridge too
+
+The obvious question from Python is why not skip the subprocess and
+`import sonpy`. Usually you cannot. CED publishes `sonpy` only as prebuilt
+binaries, and the current release (1.9.12) covers this much:
+
+| Platform | Wheels |
+| --- | --- |
+| Linux x86_64 (`manylinux_2_39`) | CPython 3.14 only |
+| macOS (`universal2`) | CPython 3.14 only |
+| Windows x86_64 | CPython 3.9 – 3.14 |
+| Linux aarch64 | none |
+
+Older releases do not fill the gaps, because each is pinned by
+`Requires-Python` to exactly one minor version — 1.7.x to 3.7, 1.8.x to 3.8,
+1.9.1 through 1.9.5 to 3.9. There is an sdist, but it cannot be built from
+source: the SON64 library it wraps is CED's proprietary binary.
+
+The practical result is that on Linux and macOS **no `sonpy` release installs
+at all on CPython 3.10 through 3.13** — `pip install sonpy` there fails
+outright, rather than picking an older version — and on Linux aarch64 none
+installs on any version. Apple Silicon is the sharpest case: the
+macOS wheel is x86_64-only despite its `universal2` label, and is linked against
+the python.org framework build, so a native arm64 interpreter can **never**
+import it — no Python version fixes that. Spawning an x86_64 process under
+Rosetta is the only mechanism that works.
+
+The subprocess boundary is what makes those constraints someone else's problem.
+`sonpipe` lives in its own environment — the right Python, the right
+architecture, the `arch -x86_64` wrapper where one is needed — and the host
+talks to it over stdout. A Python 3.11 host on an M-series Mac can read `.smrx`
+files it could not otherwise open at all, and it does not have to pin its own
+interpreter to CED's release schedule to keep doing so.
+
+A Python host should therefore drive the CLI the same way MATLAB does, and
+should apply the same completion-sentinel check: `subprocess.returncode` has the
+identical blind spot, since the `arch -x86_64` wrapper can mask a signal death
+as a zero exit status.
 
 ---
 
@@ -245,13 +298,14 @@ host may otherwise see only truncated or empty output.
 
 Two mechanisms help you catch and locate such a crash:
 
-1. **The MATLAB layer detects it.** A successful `read` prints a completion
+1. **The host layer detects it.** A successful `read` prints a completion
    sentinel (`sonpipe: wrote N …`) to stderr as its final act. The MATLAB
    `invoke_binary` helper requires that sentinel and checks that `N` matches the
    bytes captured; if the reader died mid-stream (even when an intermediate
    `arch -x86_64` wrapper masks the non-zero exit status), you get a
    `sonpipe:crash` / `sonpipe:truncated` error naming the exact command instead
-   of silently short data.
+   of silently short data. Any host should do the same — a process exit status
+   alone is not enough to notice this, in MATLAB or anywhere else.
 
 2. **Breadcrumb logging pinpoints *where* it crashed.** Set the `SONPIPE_LOG`
    environment variable and re-run the command that crashes. sonpipe writes one
