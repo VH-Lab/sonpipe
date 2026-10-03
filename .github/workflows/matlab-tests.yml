@@ -2,7 +2,7 @@ name: MATLAB tests
 
 # matbox-style CI (mirroring VH-Lab/NDR-matlab) for the +sonpipe MATLAB
 # wrappers. Runs the matlab.unittest suite across Linux, Windows, and macOS
-# Apple Silicon (macos-14). The MATLAB tests drive a fake sonpipe CLI
+# Apple Silicon (macos-15). The MATLAB tests drive a fake sonpipe CLI
 # (Python + numpy), so CED's sonpy binaries are not required.
 #
 # Licensing: matlab-actions provides MathWorks licensing for free on PUBLIC
@@ -33,7 +33,7 @@ jobs:
         os:
           - ubuntu-latest    # Linux
           - windows-latest   # Windows
-          - macos-14         # macOS Apple Silicon
+          - macos-15         # macOS Apple Silicon
 
     steps:
       - name: Check out repository

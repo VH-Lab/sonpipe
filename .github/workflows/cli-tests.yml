@@ -1,7 +1,7 @@
 name: CLI tests
 
 # Build ("compile") and test the Python command-line tool across Linux,
-# Windows, and macOS Apple Silicon (macos-14, running natively on arm64). The
+# Windows, and macOS Apple Silicon (macos-15, running natively on arm64). The
 # tests use a fake sonpy shim, so they do not require CED's sonpy binaries.
 
 on:
@@ -29,7 +29,7 @@ jobs:
             python-version: '3.11'
           - os: windows-latest   # Windows
             python-version: '3.11'
-          - os: macos-14         # macOS Apple Silicon
+          - os: macos-15         # macOS Apple Silicon
             python-version: '3.11'
 
     steps:

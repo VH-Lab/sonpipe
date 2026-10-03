@@ -5,7 +5,7 @@ name: Integration tests (real sonpy)
 #
 # CED ships sonpy wheels for Python 3.14 on manylinux, macOS and Windows.
 # Note: CED's macOS wheel is labelled universal2 but actually contains an
-# x86_64-only binary (no native arm64). On Apple Silicon (macos-14) we
+# x86_64-only binary (no native arm64). On Apple Silicon (macos-15) we
 # therefore run every Python command through `arch -x86_64`, which executes the
 # x86_64 slice of the universal2 python.org interpreter under Rosetta 2 so the
 # x86_64 sonpy loads. Other platforms run their native x86_64 Python. (The
@@ -37,7 +37,7 @@ jobs:
             py: python
           - os: windows-latest   # Windows
             py: python
-          - os: macos-14         # macOS Apple Silicon -> x86_64 under Rosetta
+          - os: macos-15         # macOS Apple Silicon -> x86_64 under Rosetta
             py: arch -x86_64 python
 
     steps:
